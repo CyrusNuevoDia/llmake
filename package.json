@@ -1,37 +1,37 @@
 {
-  "name": "llmake",
-  "version": "0.1.1",
+  "name": "lens-engine",
+  "version": "0.0.1",
   "type": "module",
-  "description": "Content-addressed LLM generation CLI — make, but the compiler is an LLM",
+  "description": "Multi-representation programming: keep prose intent artifacts in sync with each other and with the code",
   "author": "Zenbase AI",
   "license": "GPL-3.0",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/CyrusNuevoDia/llmake.git"
+    "url": "git+https://github.com/CyrusNuevoDia/lens.git"
   },
-  "homepage": "https://github.com/CyrusNuevoDia/llmake",
+  "homepage": "https://github.com/CyrusNuevoDia/lens",
   "keywords": [
-    "llm",
+    "lens",
     "cli",
-    "codegen",
-    "build",
-    "make",
-    "content-addressed",
+    "llm",
     "ai",
-    "llmake"
+    "sync",
+    "content-addressed",
+    "prose-first"
   ],
   "bin": {
-    "llmake": "dist/llmake.js"
+    "lens": "dist/lens.js"
   },
   "files": [
-    "dist/llmake.js",
+    "dist/lens.js",
+    "templates",
     "README.md",
     "LICENSE"
   ],
   "scripts": {
     "dev": "bun run src/index.ts",
-    "build": "bun build src/index.ts --outfile dist/llmake.js --target node --minify",
-    "build:bin": "bun build src/index.ts --compile --outfile bin/llmake",
+    "build": "bun build src/index.ts --outfile dist/lens.js --target node --minify",
+    "build:bin": "bun build src/index.ts --compile --outfile bin/lens",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "check": "ultracite check",
@@ -43,10 +43,10 @@
     "@types/bun": "latest",
     "fast-glob": "^3.3.3",
     "shescape": "^2.1.8",
-    "smol-toml": "^1.3.0",
     "strip-json-comments": "^5.0.3",
     "typescript": "^5.9.0",
     "ultracite": "7.1.4",
+    "yaml": "^2.6.0",
     "zod": "^4.3.6"
   }
 }

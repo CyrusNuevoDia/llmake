@@ -1,11 +1,12 @@
-import { readFile, writeFile } from "node:fs/promises";
-import type { LlmakeLock, TaskDiff, TaskLockEntry } from "./types";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { dirname } from "node:path";
+import type { LensLock, TaskDiff, TaskKind, TaskLockEntry } from "./types";
 
 /**
  * Read the lockfile from disk.
  * Returns an empty lock structure if the file doesn't exist.
  */
-export async function readLock(lockPath: string): Promise<LlmakeLock> {
+export async function readLock(lockPath: string): Promise<LensLock> {
   try {
     const text = await readFile(lockPath, "utf-8");
     return JSON.parse(text);
@@ -16,11 +17,13 @@ export async function readLock(lockPath: string): Promise<LlmakeLock> {
 
 /**
  * Write the lockfile to disk as formatted JSON with a trailing newline.
+ * Creates the containing directory if needed (e.g., `.lens/`).
  */
 export async function writeLock(
   lockPath: string,
-  lock: LlmakeLock
+  lock: LensLock
 ): Promise<void> {
+  await mkdir(dirname(lockPath), { recursive: true });
   await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
 }
 
@@ -29,17 +32,16 @@ export async function writeLock(
  * Uses Merkle root for fast-path comparison, falls back to per-file diff.
  */
 export function diffTask(
-  taskName: string,
+  taskKind: TaskKind,
   currentFiles: Record<string, string>,
   currentRoot: string,
   lockEntry: TaskLockEntry | undefined
 ): TaskDiff {
   const allFiles = Object.keys(currentFiles);
 
-  // No lock entry → everything is new
   if (!lockEntry) {
     return {
-      task: taskName,
+      task: taskKind,
       changed: true,
       changed_files: allFiles,
       removed_files: [],
@@ -47,10 +49,9 @@ export function diffTask(
     };
   }
 
-  // Quick check: Merkle root match → skip
   if (lockEntry.sources_hash === currentRoot) {
     return {
-      task: taskName,
+      task: taskKind,
       changed: false,
       changed_files: [],
       removed_files: [],
@@ -58,7 +59,6 @@ export function diffTask(
     };
   }
 
-  // Slow path: per-file diff
   const changed: string[] = [];
   const removed: string[] = [];
 
@@ -75,7 +75,7 @@ export function diffTask(
   }
 
   return {
-    task: taskName,
+    task: taskKind,
     changed: changed.length > 0 || removed.length > 0,
     changed_files: changed,
     removed_files: removed,

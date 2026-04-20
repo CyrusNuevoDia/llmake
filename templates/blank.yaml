@@ -1,0 +1,11 @@
+# blank template — no lenses shipped.
+# Use `lens add <name>` to grow the set.
+
+intent: __LENS_INTENT_PLACEHOLDER__
+
+runner: claude --allowed-tools Read,Write,Edit,Bash --print {prompt}
+
+settings:
+  autoApprove: false
+
+lenses: []

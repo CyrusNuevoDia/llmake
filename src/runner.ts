@@ -2,33 +2,39 @@ import { spawn } from "node:child_process";
 import { Shescape } from "shescape";
 
 /**
- * Build an XML-formatted prompt combining user prompt and changed files.
+ * Env var that, when set, overrides the config's `runner` template for this
+ * invocation. Used by tests and for ops/debugging — lets you swap models or
+ * mock the LLM without editing `.lenses/config.yaml`. Must still contain the
+ * `{prompt}` placeholder.
  */
-export function assemblePrompt(
-  userPrompt: string,
-  changedFiles: string[]
-): string {
-  return [
-    `<prompt>${userPrompt}</prompt>`,
-    `<changed-files>${changedFiles.join(", ")}</changed-files>`,
-  ].join("\n");
-}
+export const RUNNER_OVERRIDE_ENV = "LENS_RUNNER_OVERRIDE";
 
 /**
  * Execute a runner template as a login shell command.
  * Uses -l -i flags to ensure user's PATH is loaded from .zshrc/.bashrc.
+ *
+ * Honors `$LENS_RUNNER_OVERRIDE` when set (must contain `{prompt}`).
  */
-export async function executeRunner(
+export function executeRunner(
   runnerTemplate: string,
   prompt: string
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  const shell = process.env.SHELL || "/bin/sh";
+  const override = process.env[RUNNER_OVERRIDE_ENV];
+  const usingOverride = Boolean(override?.includes("{prompt}"));
+  const effective = usingOverride ? (override as string) : runnerTemplate;
+
+  // When using the override, run under a non-login `/bin/bash` — overrides
+  // are for tests/ops and should not depend on the user's interactive shell
+  // startup (zshrc/bashrc) succeeding. Normal runs go through the user's
+  // login shell so `$PATH` picks up tools like `claude`.
+  const shell = usingOverride ? "/bin/bash" : process.env.SHELL || "/bin/sh";
+  const shellArgs = usingOverride ? ["-c"] : ["-l", "-i", "-c"];
   const shescape = new Shescape({ shell });
   const quoted = shescape.quote(prompt);
-  const command = runnerTemplate.replace("{prompt}", quoted);
+  const command = effective.replace("{prompt}", quoted);
 
   return new Promise((resolve) => {
-    const proc = spawn(shell, ["-l", "-i", "-c", command], {
+    const proc = spawn(shell, [...shellArgs, command], {
       cwd: process.cwd(),
       stdio: "inherit",
       env: {

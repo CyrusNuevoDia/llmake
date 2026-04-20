@@ -126,12 +126,12 @@ Most formatting and common issues are automatically fixed by Biome. Run `bun x u
 
 ## Publishing
 
-This package is published to npm as `llmake` (CLI command: `llmake`).
+This package is published to npm as `lens-engine` (CLI command: `lens`).
 
-- **Build**: `bun run build` bundles `src/index.ts` into a single `dist/llmake.js` with all dependencies inlined
-- **Build standalone binary**: `bun run build:bin` compiles to `bin/llmake` (local use only, not published)
-- **Publish**: `npm publish` (runs `prepublishOnly` -> `bun run build` automatically)
-- **Install**: `npm i -g llmake` / `bun add -g llmake` / `pnpm add -g llmake`
-- **Run without installing**: `npx llmake` / `bunx llmake` / `pnpx llmake`
+- **Build**: `bun run build` bundles `src/index.ts` into a single `dist/lens.js` with all dependencies inlined.
+- **Build standalone binary**: `bun run build:bin` compiles to `bin/lens` (local use only, not published).
+- **Publish**: `npm publish` (runs `prepublishOnly` -> `bun run build` automatically).
+- **Install**: `npm i -g lens-engine` / `bun add -g lens-engine` / `pnpm add -g lens-engine`.
+- **Run without installing**: `npx lens-engine` / `bunx lens-engine` / `pnpx lens-engine`.
 
-The published package contains only `dist/llmake.js` (single bundled file with `#!/usr/bin/env node` shebang), `README.md`, and `LICENSE`. Runtime dependencies are bundled into the output at build time, so they live in `devDependencies`. The source uses only Node.js standard APIs (no Bun-specific APIs) so it works with any runtime.
+The published package contains `dist/lens.js` (single bundled file with `#!/usr/bin/env node` shebang), the `templates/` directory (shipped lens templates), `README.md`, and `LICENSE`. Runtime dependencies are bundled into the output at build time, so they live in `devDependencies`. The source uses only Node.js standard APIs (no Bun-specific APIs) so it works with any runtime.

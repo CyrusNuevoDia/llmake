@@ -7,7 +7,7 @@ import fg from "fast-glob";
  * @param path - Path to the file to hash
  * @returns Promise resolving to "sha256:<hex>" format hash
  */
-export async function hashFile(path: string): Promise<string> {
+export function hashFile(path: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const hasher = createHash("sha256");
     const stream = createReadStream(path);

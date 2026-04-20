@@ -1,60 +1,39 @@
 #!/usr/bin/env node
 
-import { access, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
 import { parseArgs } from "node:util";
-import { discoverConfig, loadConfig } from "./config";
-import { computeMerkleRoot, hashFile, resolveFiles } from "./hash";
-import { diffTask, readLock, writeLock } from "./lock";
-import { assemblePrompt, executeRunner } from "./runner";
-import type {
-  LlmakeConfig,
-  LlmakeLock,
-  TaskConfig,
-  TaskDiff,
-  TaskLockEntry,
-} from "./types";
+import { runInit } from "./cli/init";
+import { Exit, type ExitCode } from "./exit";
 
-const VERSION = "0.1.1";
+const VERSION = "0.0.1";
 
-const HELP = `llmake ${VERSION}
+const HELP = `lens ${VERSION}
 
 Usage:
-  llmake                     Run all tasks with changes
-  llmake <task>              Run specific task if changed
-  llmake --force [task]      Run regardless of hash state
-  llmake --dry-run [task]    Show what would run
-  llmake --status            Show per-task change status
-  llmake --init              Write starter llmake.jsonc
-  llmake --config <path>     Use specific config file
-  llmake --help              Print this help
-  llmake --version           Print version
+  lens init [description] [--template <name>]
+  lens --help
+  lens --version
+
+Global flags:
+  --config <path>    Use a specific config file (default: .lenses/config.yaml)
+  --force            Overwrite existing config (init only)
+  --dry-run          Print what would happen without executing
+  --template <name>  Template for init (default: webapp)
+  --help, -h         Print this help
+  --version, -v      Print version
 `;
 
-const STARTER_CONFIG = `{
-  // Default runner command - {prompt} will be replaced with the assembled prompt
-  "runner": "claude --allowed-tools Read,Write,Edit --print {prompt}",
-  "tasks": {
-    "example": {
-      "prompt": "Describe what this code does",
-      "sources": ["src/**/*.ts"]
-    }
-  }
-}
-`;
-
-interface Args {
+interface ParsedArgs {
+  verb?: string;
+  positionals: string[];
   help: boolean;
   version: boolean;
   force: boolean;
   dryRun: boolean;
-  status: boolean;
-  init: boolean;
+  template?: string;
   configPath?: string;
-  task?: string;
 }
 
-function parseCliArgs(): Args {
+function parseCliArgs(): ParsedArgs {
   const { values, positionals } = parseArgs({
     args: process.argv.slice(2),
     options: {
@@ -62,266 +41,73 @@ function parseCliArgs(): Args {
       version: { type: "boolean", short: "v", default: false },
       force: { type: "boolean", short: "f", default: false },
       "dry-run": { type: "boolean", short: "n", default: false },
-      status: { type: "boolean", short: "s", default: false },
-      init: { type: "boolean", default: false },
+      template: { type: "string" },
       config: { type: "string", short: "c" },
     },
     allowPositionals: true,
     strict: true,
   });
 
+  const [verb, ...rest] = positionals;
   return {
+    verb,
+    positionals: rest,
     help: values.help ?? false,
     version: values.version ?? false,
     force: values.force ?? false,
     dryRun: values["dry-run"] ?? false,
-    status: values.status ?? false,
-    init: values.init ?? false,
+    template: values.template,
     configPath: values.config,
-    task: positionals[0],
   };
 }
 
-async function handleInit(): Promise<void> {
-  const configPath = resolve(process.cwd(), "llmake.jsonc");
-  try {
-    await access(configPath);
-    console.error("llmake: llmake.jsonc already exists");
-    process.exit(1);
-  } catch {
-    // File doesn't exist, proceed
+function dispatch(args: ParsedArgs): Promise<ExitCode> {
+  if (args.help || args.verb === "help") {
+    console.log(HELP);
+    return Promise.resolve(Exit.SUCCESS);
   }
-  await writeFile(configPath, STARTER_CONFIG);
-  console.log("llmake: created llmake.jsonc");
-}
-
-async function loadAndValidateConfig(
-  configPath?: string
-): Promise<{ config: LlmakeConfig; path: string }> {
-  const resolvedPath = configPath
-    ? resolve(configPath)
-    : await discoverConfig();
-
-  if (!resolvedPath) {
-    console.error(
-      "llmake: no config file found (llmake.ts, llmake.jsonc, llmake.json, llmake.toml)"
-    );
-    process.exit(2);
+  if (args.version || args.verb === "version") {
+    console.log(VERSION);
+    return Promise.resolve(Exit.SUCCESS);
+  }
+  if (!args.verb) {
+    console.log(HELP);
+    return Promise.resolve(Exit.SUCCESS);
   }
 
-  try {
-    return { config: await loadConfig(resolvedPath), path: resolvedPath };
-  } catch (error) {
-    console.error(error instanceof Error ? error.message : String(error));
-    process.exit(1);
-  }
-}
-
-interface TaskContext {
-  name: string;
-  config: TaskConfig;
-  runner: string;
-  fileHashes: Record<string, string>;
-  merkleRoot: string;
-  diff: TaskDiff;
-}
-
-async function prepareTask(
-  name: string,
-  config: LlmakeConfig,
-  lock: LlmakeLock
-): Promise<TaskContext | null> {
-  const taskConfig = config.tasks[name];
-  const files = await resolveFiles(taskConfig.sources, taskConfig.exclude);
-
-  if (files.length === 0) {
-    console.log(`llmake: ${name} — no files matched`);
-    return null;
+  if (args.verb === "init") {
+    return runInit({
+      description: args.positionals[0],
+      template: args.template ?? "webapp",
+      force: args.force,
+      dryRun: args.dryRun,
+      configPath: args.configPath,
+    });
   }
 
-  const fileHashes: Record<string, string> = {};
-  for (const file of files) {
-    fileHashes[file] = await hashFile(file);
-  }
-
-  const merkleRoot = computeMerkleRoot(fileHashes);
-  const diff = diffTask(name, fileHashes, merkleRoot, lock.tasks[name]);
-
-  return {
-    name,
-    config: taskConfig,
-    runner: taskConfig.runner ?? config.runner,
-    fileHashes,
-    merkleRoot,
-    diff,
-  };
-}
-
-function handleStatus(ctx: TaskContext): void {
-  if (ctx.diff.changed) {
-    const count = ctx.diff.changed_files.length + ctx.diff.removed_files.length;
-    console.log(`llmake: ${ctx.name} — changed (${count} files)`);
-  } else {
-    console.log(`llmake: ${ctx.name} — up to date`);
-  }
-}
-
-function handleDryRun(ctx: TaskContext, force: boolean): void {
-  if (ctx.diff.changed || force) {
-    console.log(
-      `llmake: ${ctx.name} — would run: ${ctx.runner.replace("{prompt}", "...")}`
-    );
-  } else {
-    console.log(`llmake: ${ctx.name} — no changes, would skip`);
-  }
-}
-
-async function runTask(
-  ctx: TaskContext,
-  force: boolean
-): Promise<TaskLockEntry | null> {
-  if (!(ctx.diff.changed || force)) {
-    console.log(`llmake: ${ctx.name} — no changes`);
-    return null;
-  }
-
-  logChanges(ctx, force);
-
-  console.log(
-    `llmake: ${ctx.name} — running: ${ctx.runner.replace("{prompt}", "...")}`
-  );
-
-  const prompt = assemblePrompt(ctx.config.prompt, ctx.diff.changed_files);
-  const start = performance.now();
-  const result = await executeRunner(ctx.runner, prompt);
-  const elapsed = ((performance.now() - start) / 1000).toFixed(1);
-
-  if (result.exitCode !== 0) {
-    console.error(
-      `llmake: ${ctx.name} — failed (exit ${result.exitCode}, ${elapsed}s)`
-    );
-    return null;
-  }
-
-  console.log(`llmake: ${ctx.name} — done (${elapsed}s)`);
-
-  return {
-    last_run: new Date().toISOString(),
-    sources_hash: ctx.merkleRoot,
-    files: ctx.fileHashes,
-  };
-}
-
-function logChanges(ctx: TaskContext, force: boolean): void {
-  if (ctx.diff.changed_files.length > 0) {
-    const list = ctx.diff.changed_files.slice(0, 3).join(", ");
-    const more =
-      ctx.diff.changed_files.length > 3
-        ? `, +${ctx.diff.changed_files.length - 3} more`
-        : "";
-    console.log(
-      `llmake: ${ctx.name} — ${ctx.diff.changed_files.length} files changed (${list}${more})`
-    );
-  } else if (force) {
-    console.log(`llmake: ${ctx.name} — forced run`);
-  }
-}
-
-async function processTasks(
-  taskNames: string[],
-  config: LlmakeConfig,
-  lock: LlmakeLock,
-  args: Args
-): Promise<{ updatedLock: LlmakeLock; anyFailed: boolean }> {
-  const updatedLock: LlmakeLock = { version: 1, tasks: { ...lock.tasks } };
-  let anyFailed = false;
-
-  for (const taskName of taskNames) {
-    const ctx = await prepareTask(taskName, config, lock);
-    if (!ctx) {
-      continue;
-    }
-
-    if (args.status) {
-      handleStatus(ctx);
-      continue;
-    }
-
-    if (args.dryRun) {
-      handleDryRun(ctx, args.force);
-      continue;
-    }
-
-    const lockEntry = await runTask(ctx, args.force);
-    if (lockEntry) {
-      updatedLock.tasks[taskName] = lockEntry;
-    } else if (ctx.diff.changed || args.force) {
-      anyFailed = true;
-    }
-  }
-
-  return { updatedLock, anyFailed };
+  console.error(`lens: unknown verb: ${args.verb}`);
+  console.error(HELP);
+  return Promise.resolve(Exit.FAIL);
 }
 
 async function main(): Promise<void> {
-  let args: Args;
+  let args: ParsedArgs;
   try {
     args = parseCliArgs();
   } catch (error) {
     console.error(
-      `llmake: ${error instanceof Error ? error.message : String(error)}`
+      `lens: ${error instanceof Error ? error.message : String(error)}`
     );
-    process.exit(1);
+    process.exit(Exit.FAIL);
   }
 
-  if (args.help) {
-    console.log(HELP);
-    process.exit(0);
-  }
-  if (args.version) {
-    console.log(VERSION);
-    process.exit(0);
-  }
-  if (args.init) {
-    await handleInit();
-    process.exit(0);
-  }
-
-  const { config, path: configPath } = await loadAndValidateConfig(
-    args.configPath
-  );
-  const taskNames = Object.keys(config.tasks);
-  const lockPath = resolve(dirname(configPath), ".llmake.lock");
-
-  console.log(
-    `llmake: loaded ${configPath.split("/").pop()} (${taskNames.length} tasks)`
-  );
-
-  if (args.task && !(args.task in config.tasks)) {
-    console.error(`llmake: unknown task: ${args.task}`);
-    process.exit(1);
-  }
-
-  const lock = await readLock(lockPath);
-  const tasksToProcess = args.task ? [args.task] : taskNames;
-
-  const { updatedLock, anyFailed } = await processTasks(
-    tasksToProcess,
-    config,
-    lock,
-    args
-  );
-
-  if (!(args.status || args.dryRun)) {
-    await writeLock(lockPath, updatedLock);
-  }
-
-  process.exit(anyFailed ? 1 : 0);
+  const code = await dispatch(args);
+  process.exit(code);
 }
 
 main().catch((error) => {
   console.error(
-    `llmake: ${error instanceof Error ? error.message : String(error)}`
+    `lens: ${error instanceof Error ? error.message : String(error)}`
   );
-  process.exit(1);
+  process.exit(Exit.FAIL);
 });

@@ -1,34 +1,33 @@
 import { access, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { parse as parseToml } from "smol-toml";
 import stripJsonComments from "strip-json-comments";
+import { parse as parseYaml } from "yaml";
 import { z } from "zod";
-import type { LlmakeConfig } from "./types";
+import type { LensConfig } from "./types";
 
 const CONFIG_FILES = [
-  "llmake.ts",
-  "llmake.jsonc",
-  "llmake.json",
-  "llmake.toml",
+  ".lenses/config.yaml",
+  ".lenses/config.jsonc",
+  ".lenses/config.json",
 ] as const;
 
-const TaskConfigSchema = z
+const LensSettingsSchema = z
   .object({
-    prompt: z.string().min(1, "prompt must not be empty"),
-    sources: z.array(z.string()).min(1, "sources must not be empty"),
-    exclude: z.array(z.string()).optional(),
-    runner: z
-      .string()
-      .refine(
-        (s) => s.includes("{prompt}"),
-        "runner must contain {prompt} placeholder"
-      )
-      .optional(),
+    autoApprove: z.boolean().optional(),
   })
   .passthrough();
 
-const LlmakeConfigSchema = z
+const LensDefSchema = z
   .object({
+    name: z.string().min(1, "lens name must not be empty"),
+    path: z.string().min(1, "lens path must not be empty"),
+    description: z.string().min(1, "lens description must not be empty"),
+  })
+  .passthrough();
+
+const LensConfigSchema = z
+  .object({
+    intent: z.string().min(1, "intent must not be empty"),
     runner: z
       .string()
       .min(1, "runner must not be empty")
@@ -36,9 +35,8 @@ const LlmakeConfigSchema = z
         (s) => s.includes("{prompt}"),
         "runner must contain {prompt} placeholder"
       ),
-    tasks: z
-      .record(z.string(), TaskConfigSchema)
-      .refine((t) => Object.keys(t).length > 0, "tasks must not be empty"),
+    settings: LensSettingsSchema.optional(),
+    lenses: z.array(LensDefSchema),
   })
   .passthrough();
 
@@ -51,6 +49,11 @@ async function fileExists(path: string): Promise<boolean> {
   }
 }
 
+/**
+ * Walk the filesystem looking for a Lens config file.
+ * Discovery order: `.lenses/config.yaml` → `.lenses/config.jsonc` → `.lenses/config.json`.
+ * Returns absolute path or null if none found.
+ */
 export async function discoverConfig(cwd?: string): Promise<string | null> {
   const dir = cwd ?? process.cwd();
 
@@ -64,38 +67,38 @@ export async function discoverConfig(cwd?: string): Promise<string | null> {
   return null;
 }
 
-export async function loadConfig(path: string): Promise<LlmakeConfig> {
+/**
+ * Load and parse a config file. Supports .yaml, .jsonc, .json extensions.
+ */
+export async function loadConfig(path: string): Promise<LensConfig> {
   const ext = path.split(".").pop()?.toLowerCase();
-
-  if (ext === "ts") {
-    const module = await import(resolve(path));
-    const raw =
-      typeof module.default === "function"
-        ? await module.default()
-        : module.default;
-    return validateConfig(raw);
-  }
-
   const text = await readFile(path, "utf-8");
 
-  if (ext === "json" || ext === "jsonc") {
+  if (ext === "yaml" || ext === "yml") {
+    return validateConfig(parseYaml(text));
+  }
+
+  if (ext === "jsonc") {
     return validateConfig(JSON.parse(stripJsonComments(text)));
   }
 
-  if (ext === "toml") {
-    return validateConfig(parseToml(text));
+  if (ext === "json") {
+    return validateConfig(JSON.parse(text));
   }
 
-  throw new Error(`llmake: unsupported config format: ${ext}`);
+  throw new Error(`lens: unsupported config format: ${ext}`);
 }
 
-export function validateConfig(raw: unknown): LlmakeConfig {
-  const result = LlmakeConfigSchema.safeParse(raw);
+/**
+ * Validate an arbitrary value against the Lens config schema.
+ */
+export function validateConfig(raw: unknown): LensConfig {
+  const result = LensConfigSchema.safeParse(raw);
 
   if (!result.success) {
     const issue = result.error.issues[0];
     const path = issue.path.length > 0 ? ` in "${issue.path.join(".")}"` : "";
-    throw new Error(`llmake: config error${path}: ${issue.message}`);
+    throw new Error(`lens: config error${path}: ${issue.message}`);
   }
 
   return result.data;

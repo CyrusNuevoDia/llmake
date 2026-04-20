@@ -1,0 +1,51 @@
+# webapp template — the default scaffold.
+# The __LENS_INTENT_PLACEHOLDER__ token below is substituted by `lens init`
+# with the user's actual description.
+
+intent: __LENS_INTENT_PLACEHOLDER__
+
+# Runner command for LLM invocation. {prompt} is substituted at execution time.
+runner: claude --allowed-tools Read,Write,Edit,Bash --print {prompt}
+
+settings:
+  autoApprove: false
+
+lenses:
+  - name: schema
+    path: .lenses/schema.md
+    description: |
+      Normalized relational schema as markdown. For each table: a markdown
+      table with columns (name, type, nullable, PK/FK, constraints). End
+      with a "Relationships" section listing cardinalities.
+
+  - name: api
+    path: .lenses/api.md
+    description: |
+      Every REST endpoint as a markdown table: Method, Path, Description,
+      Auth (role required), Request body, Response body.
+
+  - name: roles
+    path: .lenses/roles.md
+    description: |
+      Every role in the system. For each, a bulleted list of what they can
+      and cannot do. Group by resource.
+
+  - name: jobs
+    path: .lenses/jobs.md
+    description: |
+      Background / scheduled / event-driven jobs. For each: trigger,
+      inputs, side effects, idempotency, and expected cadence or SLA.
+
+  - name: flows
+    path: .lenses/flows.md
+    description: |
+      End-to-end user flows as ordered bulleted steps. One section per flow
+      (e.g., "Sign up", "Create invoice"). Reference roles and API endpoints
+      where relevant.
+
+  - name: wireframes
+    path: .lenses/wireframes.md
+    description: |
+      Low-fidelity screen sketches as fenced ASCII or markdown. One section
+      per primary screen. Label the role(s) that see each screen and which
+      flow step(s) it belongs to.

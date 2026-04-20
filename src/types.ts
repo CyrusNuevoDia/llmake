@@ -1,66 +1,78 @@
 /**
- * The resolved, validated configuration shape.
- * Represents the parsed and validated llmake configuration.
+ * The resolved, validated Lens configuration shape.
  */
-export interface LlmakeConfig {
-  /** The default runner command to execute for code generation tasks. */
+export interface LensConfig {
+  /** Seed description of the system. Passed into every generation prompt. */
+  intent: string;
+  /** Runner command template. Must contain `{prompt}` placeholder. */
   runner: string;
-  /** Map of task names to their configurations. */
-  tasks: Record<string, TaskConfig>;
+  /** Optional global settings. */
+  settings?: LensSettings;
+  /** The lens set. Order is not significant. */
+  lenses: LensDef[];
 }
 
 /**
- * Configuration for a single llmake task.
- * Defines what files to process and how to generate code from them.
+ * Optional settings block on `LensConfig`.
  */
-export interface TaskConfig {
-  /** The prompt template or instruction for the code generation. */
-  prompt: string;
-  /** Glob patterns for source files to include. */
-  sources: string[];
-  /** Optional glob patterns for files to exclude from sources. */
-  exclude?: string[];
-  /** Optional runner override for this specific task. */
-  runner?: string;
+export interface LensSettings {
+  /** If true, sync/pull skip user review. Default false. */
+  autoApprove?: boolean;
 }
 
 /**
- * The .llmake.lock file shape.
- * Tracks the state of generated files for incremental builds.
+ * A single lens definition.
  */
-export interface LlmakeLock {
+export interface LensDef {
+  /** Unique identifier. Used in CLI args. */
+  name: string;
+  /** File path. Can be anywhere in repo, not just `.lenses/`. */
+  path: string;
+  /** What the lens should contain. Used as generation guidance. */
+  description: string;
+}
+
+/**
+ * Internal task kinds that Lens runs.
+ * Derived from the lens set, not user-declared.
+ */
+export type TaskKind = "generate" | "sync" | "pull";
+
+/**
+ * The `.lens/lock.json` file shape.
+ * Tracks the state of each task's last run for incremental change detection.
+ */
+export interface LensLock {
   /** Lock file format version for future compatibility. */
   version: 1;
-  /** Map of task names to their lock entries. */
-  tasks: Record<string, TaskLockEntry>;
+  /** Map of task kinds to their lock entries. */
+  tasks: Partial<Record<TaskKind, TaskLockEntry>>;
 }
 
 /**
- * Lock entry for a single task.
- * Records when the task was last run and the state of its source files.
+ * Lock entry for a single task run.
  */
 export interface TaskLockEntry {
   /** ISO 8601 timestamp of when the task was last executed. */
   last_run: string;
-  /** Combined hash of all source file contents in format "sha256:<hex>". */
+  /** Merkle root over all sources at last run, format "sha256:<hex>". */
   sources_hash: string;
-  /** Map of file paths to their content hashes in format "sha256:<hex>". */
+  /** Map of file paths to their content hashes, format "sha256:<hex>". */
   files: Record<string, string>;
 }
 
 /**
  * Result of diffing current state against lockfile.
- * Used to determine which files need regeneration.
  */
 export interface TaskDiff {
-  /** The name of the task being diffed. */
-  task: string;
+  /** The task kind being diffed. */
+  task: TaskKind;
   /** Whether any source files have changed since the last run. */
   changed: boolean;
   /** Paths to files that are new or have been modified. */
   changed_files: string[];
-  /** Paths to files that were in the lock but no longer match globs. */
+  /** Paths to files that were in the lock but no longer match. */
   removed_files: string[];
-  /** All files currently matched by the task's source globs. */
+  /** All files currently matched by the task's source set. */
   all_files: string[];
 }
