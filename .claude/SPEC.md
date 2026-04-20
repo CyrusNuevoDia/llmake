@@ -1,755 +1,651 @@
-# llmake — Implementation Spec
+# Lens — Implementation Spec
 
-## Overview
-
-`llmake` is a content-addressed, LLM-powered build system for derived files. It detects source file changes via SHA-256 hashing, assembles a prompt, and injects it into a configurable runner command (e.g. `claude`, `codex`, `llm`).
-
-Built as a single TypeScript entrypoint, compiled to a standalone binary via `bun build --compile`.
+> **Handoff document for a coding agent.** This spec defines Lens, to be built as a fork of [llmake](https://github.com/CyrusNuevoDia/llmake). Lens extends llmake with lens-specific semantics (cross-file sync, git ref management, plan-mode integration) while preserving llmake's core primitives (content-addressed change detection, runner-agnostic execution, lockfile-based state).
 
 ---
 
-## Project Structure
+## 0. Summary
 
-```
-llmake/
-├── src/
-│   ├── index.ts          # CLI entrypoint (argument parsing, orchestration)
-│   ├── config.ts         # Config discovery, loading, validation
-│   ├── hash.ts           # File hashing + Merkle root computation
-│   ├── lock.ts           # Lockfile read/write/diff
-│   ├── runner.ts         # Prompt assembly + shell execution
-│   └── types.ts          # Shared type definitions
-├── test/
-│   ├── config.test.ts
-│   ├── hash.test.ts
-│   ├── lock.test.ts
-│   ├── runner.test.ts
-│   └── integration.test.ts
-├── llmake.jsonc          # Self-referential: llmake uses llmake
-├── package.json
-├── tsconfig.json
-└── README.md
-```
+Lens is a CLI and Claude Code plugin for **multi-representation programming**. Developers maintain a set of prose intent artifacts ("lenses") — schema, API, roles, flows, etc. — as files on disk. Lens keeps them in sync with each other and with the codebase.
+
+The CLI (`lens`) is a fork of llmake with added semantics for lens workflows. The Claude Code plugin is a thin skill pack that shells out to the CLI and handles plan-mode handoff.
+
+**Core verbs**: `init`, `add`, `sync`, `apply`, `pull`, `status`.
 
 ---
 
-## Type Definitions (`types.ts`)
+## 1. Fork Relationship
 
-```typescript
-/** The resolved, validated configuration shape. */
-export type LlmakeConfig = {
-  runner: string;
-  tasks: Record<string, TaskConfig>;
-}
+- **Source**: `github.com/CyrusNuevoDia/llmake`
+- **Fork**: Rename repo to `lens` (or `lens-engine` if maintaining llmake alongside is desired — but default is full rename).
+- **Binary**: `lens`
+- **Package name (npm)**: `lens` if available, otherwise `@cyrusnuevodia/lens`.
+- **Config discovery order**: `.lenses/config.yaml` → `.lenses/config.jsonc` → `.lenses/config.json`. The old llmake formats (`llmake.ts`, `llmake.jsonc`, etc.) are **not supported** in Lens. This is a hard break from llmake's config surface.
 
-export type TaskConfig = {
-  prompt: string;
-  sources: string[];
-  exclude?: string[];
-  runner?: string;  // overrides top-level runner
-}
+Preserve from llmake:
 
-/** The .llmake.lock file shape. */
-export type LlmakeLock = {
-  version: 1;
-  tasks: Record<string, TaskLockEntry>;
-}
+- SHA-256 per-file hashing + merkle root
+- Lockfile structure (renamed `.llmake.lock` → `.lens/lock.json`)
+- Runner-agnostic `{prompt}` substitution
+- Login-shell execution semantics
+- `--force`, `--dry-run`, `--status`, `--config`, `--help`, `--version` flags
 
-export type TaskLockEntry = {
-  last_run: string;           // ISO 8601
-  sources_hash: string;       // "sha256:<hex>"
-  files: Record<string, string>;  // path → "sha256:<hex>"
-}
+Replace or add:
 
-/** Result of diffing current state against lockfile. */
-export type TaskDiff = {
-  task: string;
-  changed: boolean;
-  changed_files: string[];    // paths that are new or modified
-  removed_files: string[];    // paths that were in lock but no longer match globs
-  all_files: string[];        // all currently matched files
-}
-```
+- Config format and discovery (see §3)
+- Task model: internally derived from lens set, not user-defined (see §4)
+- New template variables: `{changed_files}`, `{git_diff_since:<ref>}` (see §5)
+- Git ref management: `lens/synced`, `lens/applied` (see §6)
+- New verbs: `init`, `add`, `sync`, `apply`, `pull`, `status` (see §7)
 
 ---
 
-## Config Discovery & Loading (`config.ts`)
+## 2. Mental Model
 
-### Discovery Order
+> **Lenses are projections of intent.** Code is a downstream derivation.
 
-When no explicit `--config` flag is provided, llmake searches the current working directory for config files in this order:
+A **lens** is a file on disk (markdown, YAML, Prisma, whatever the user configures) that captures one aspect of the system. Lenses live in `.lenses/` by default but can be pointed anywhere.
 
-1. `llmake.ts`
-2. `llmake.jsonc`
-3. `llmake.json`
-4. `llmake.toml`
+Two directions of consistency:
 
-**First match wins.** If none are found, exit with code 2 and message:
+- **Horizontal**: Lens ↔ Lens. Edit one, the others may need updates. Handled by `lens sync`.
+- **Vertical**: Lens ↔ Code. Lenses can drive code generation (`lens apply`), or code changes can be reflected back into lenses (`lens pull`).
 
-```
-llmake: no config found (looked for llmake.ts, llmake.jsonc, llmake.json, llmake.toml)
-```
+Two git refs track state:
 
-### Loading by Format
+- `lens/synced` — commit at which lenses were last internally consistent
+- `lens/applied` — commit at which code last matched lenses
 
-#### `llmake.json` / `llmake.jsonc`
-
-```typescript
-const text = await Bun.file(path).text();
-// Strip JSONC comments: // and /* */ style
-const stripped = stripJsonComments(text);
-const raw = JSON.parse(stripped);
-return validate(raw);
-```
-
-JSONC comment stripping should handle:
-- Single-line comments (`// ...`)
-- Multi-line comments (`/* ... */`)
-- Comments inside strings must NOT be stripped (e.g. `"url": "https://example.com"`)
-- Trailing commas (JSON.parse in Bun handles these natively)
-
-#### `llmake.toml`
-
-Use Bun's built-in TOML support or a lightweight parser.
-
-#### `llmake.ts`
-
-Evaluated at runtime via dynamic import. The file must have a default export that is either:
-- A `LlmakeConfig` object, or
-- An `async () => LlmakeConfig` function
-
-```typescript
-const mod = await import(resolve(path));
-const exported = mod.default;
-const raw = typeof exported === "function" ? await exported() : exported;
-return validate(raw);
-```
-
-This enables dynamic config:
-
-```typescript
-// llmake.ts
-import type { LlmakeConfig } from "llmake";
-
-export default async (): Promise<LlmakeConfig> => {
-  const pkg = await Bun.file("package.json").json();
-  return {
-    runner: `claude --print --prompt "{prompt}"`,
-    tasks: {
-      readme: {
-        prompt: `Update README.md for ${pkg.name}@${pkg.version}.`,
-        sources: ["src/**/*.py"],
-      },
-    },
-  };
-};
-```
-
-### Validation
-
-After loading, validate the config structurally. On failure, exit with code 2 and a clear message.
-
-**Required checks:**
-- `runner` is a non-empty string containing `{prompt}`
-- `tasks` is a non-empty object
-- Each task has a non-empty `prompt` string
-- Each task has a non-empty `sources` array of strings
-- If task-level `runner` is set, it must contain `{prompt}`
-- `exclude`, if present, must be an array of strings
-
-**Error messages should be specific:**
-
-```
-llmake: config error in "api-docs": runner does not contain {prompt}
-llmake: config error in "skill": sources must be a non-empty array
-```
+These refs let `lens status` report drift precisely and let `sync`/`apply`/`pull` compute accurate deltas.
 
 ---
 
-## File Hashing (`hash.ts`)
+## 3. Config Format
 
-### Per-File Hash
+Single user-facing config: `.lenses/config.yaml`. No secondary `llmake.jsonc`.
 
-```typescript
-export async function hashFile(path: string): Promise<string> {
-  const file = Bun.file(path);
-  const hasher = new Bun.CryptoHasher("sha256");
-  // Stream the file to avoid loading large files into memory
-  const stream = file.stream();
-  for await (const chunk of stream) {
-    hasher.update(chunk);
-  }
-  return `sha256:${hasher.digest("hex")}`;
-}
+```yaml
+# Seed description of the system. Passed into every generation prompt.
+intent: |
+  A team invoicing app. Teams have admins and members. Teams create clients,
+  send invoices, and track payment status (draft → sent → paid → overdue → void).
+  Only admins can send invoices; members can create drafts.
+
+# Runner command for LLM invocation. {prompt} is substituted at execution time.
+runner: claude --allowed-tools Read,Write,Edit,Bash --print {prompt}
+
+# Optional global settings
+settings:
+  autoApprove: false # If true, sync/pull skip user review
+
+# The lens set. Order is not significant.
+lenses:
+  - name: schema
+    path: .lenses/schema.md
+    description: |
+      Normalized relational schema as markdown. For each table: a markdown
+      table with columns (name, type, nullable, PK/FK, constraints). End
+      with a "Relationships" section listing cardinalities.
+
+  - name: api
+    path: .lenses/api.md
+    description: |
+      Every REST endpoint as a markdown table: Method, Path, Description,
+      Auth (role required), Request body, Response body.
+
+  - name: roles
+    path: .lenses/roles.md
+    description: |
+      Every role in the system. For each, a bulleted list of what they can
+      and cannot do. Group by resource.
+
+  # ... etc
 ```
 
-### Merkle Root
+### Config schema
 
-The `sources_hash` is the SHA-256 of all per-file hashes, sorted lexicographically by file path:
+| Field                  | Type    | Required | Description                                                |
+| ---------------------- | ------- | -------- | ---------------------------------------------------------- |
+| `intent`               | string  | Yes      | Seed description. Included in generation prompts.          |
+| `runner`               | string  | Yes      | Command template. Must contain `{prompt}`.                 |
+| `settings.autoApprove` | boolean | No       | Default `false`. If `true`, skip user review in sync/pull. |
+| `lenses`               | array   | Yes      | Lens definitions. At least one required after `init`.      |
+| `lenses[].name`        | string  | Yes      | Unique identifier. Used in CLI args.                       |
+| `lenses[].path`        | string  | Yes      | File path. Can be anywhere in repo, not just `.lenses/`.   |
+| `lenses[].description` | string  | Yes      | What the lens should contain. Used as generation guidance. |
 
-```typescript
-export function computeMerkleRoot(
-  fileHashes: Record<string, string>
-): string {
-  const hasher = new Bun.CryptoHasher("sha256");
-  const sortedPaths = Object.keys(fileHashes).sort();
-  for (const path of sortedPaths) {
-    hasher.update(`${path}:${fileHashes[path]}\n`);
-  }
-  return `sha256:${hasher.digest("hex")}`;
-}
-```
-
-> **Why include the path in the root computation?** So that renaming a file (without changing its content) is detected as a change. The hash `a.py:sha256:abc` differs from `b.py:sha256:abc`.
-
-### Glob Resolution
-
-```typescript
-import { Glob } from "bun";
-
-export async function resolveFiles(
-  sources: string[],
-  exclude: string[] = []
-): Promise<string[]> {
-  const matched = new Set<string>();
-
-  for (const pattern of sources) {
-    const glob = new Glob(pattern);
-    for await (const path of glob.scan({ cwd: process.cwd(), dot: false })) {
-      matched.add(path);
-    }
-  }
-
-  // Apply exclusions
-  for (const pattern of exclude) {
-    const glob = new Glob(pattern);
-    for await (const path of glob.scan({ cwd: process.cwd(), dot: false })) {
-      matched.delete(path);
-    }
-  }
-
-  return [...matched].sort();
-}
-```
+Note: No per-lens `prompt` field. The prompt is _assembled_ by Lens from the lens's `description` plus the global intent and other lenses' current state. See §5.
 
 ---
 
-## Lockfile Management (`lock.ts`)
+## 4. Internal Task Model
 
-### Location
+> **Key design decision**: Users do not define tasks. Lens derives the task set from the lens configuration.
 
-`.llmake.lock` in the same directory as the config file. Always JSON (not JSONC — no comments needed, it's machine-managed).
+Internally, Lens runs exactly **three kinds of tasks**:
 
-### Reading
+1. **Generate** — populate empty/missing lens files from intent + other lenses' current content.
+2. **Sync** — propagate edits across the lens set. Run after user edits one or more lenses.
+3. **Pull** — update lenses to reflect current code state.
 
-```typescript
-export async function readLock(lockPath: string): Promise<LlmakeLock> {
-  const file = Bun.file(lockPath);
-  if (!(await file.exists())) {
-    return { version: 1, tasks: {} };
-  }
-  return await file.json();
-}
-```
+Each task type has a prompt template (§5) with variable substitution. Tasks are assembled at runtime, not stored in config.
 
-### Writing
+`apply` is not a task in the llmake sense — it's a special verb that hands off to Claude Code's plan mode.
 
-```typescript
-export async function writeLock(
-  lockPath: string,
-  lock: LlmakeLock
-): Promise<void> {
-  await Bun.write(lockPath, JSON.stringify(lock, null, 2) + "\n");
-}
-```
+### Hash tracking per task
 
-### Diffing
-
-```typescript
-export function diffTask(
-  taskName: string,
-  currentFiles: Record<string, string>,
-  currentRoot: string,
-  lockEntry: TaskLockEntry | undefined
-): TaskDiff {
-  const allFiles = Object.keys(currentFiles);
-
-  // No lock entry → everything is new
-  if (!lockEntry) {
-    return {
-      task: taskName,
-      changed: true,
-      changed_files: allFiles,
-      removed_files: [],
-      all_files: allFiles,
-    };
-  }
-
-  // Quick check: Merkle root match → skip
-  if (lockEntry.sources_hash === currentRoot) {
-    return {
-      task: taskName,
-      changed: false,
-      changed_files: [],
-      removed_files: [],
-      all_files: allFiles,
-    };
-  }
-
-  // Slow path: per-file diff
-  const changed: string[] = [];
-  const removed: string[] = [];
-
-  for (const [path, hash] of Object.entries(currentFiles)) {
-    if (lockEntry.files[path] !== hash) {
-      changed.push(path);
-    }
-  }
-
-  for (const path of Object.keys(lockEntry.files)) {
-    if (!(path in currentFiles)) {
-      removed.push(path);
-    }
-  }
-
-  return {
-    task: taskName,
-    changed: changed.length > 0 || removed.length > 0,
-    changed_files: changed,
-    removed_files: removed,
-    all_files: allFiles,
-  };
-}
-```
-
----
-
-## Runner Execution (`runner.ts`)
-
-### Login Shell Invocation
-
-This is critical. LLM CLI tools like `claude`, `codex`, and `llm` are typically installed via `npm -g`, `pip`, `brew`, or similar — and their paths are configured in the user's shell profile (`.zshrc`, `.bashrc`, `.profile`). A naive `child_process.exec` won't load these profiles.
-
-**llmake must execute the runner as a login shell command:**
-
-```typescript
-import { $ } from "bun";
-
-export async function executeRunner(
-  runnerTemplate: string,
-  prompt: string
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
-  // Interpolate {prompt} into the runner command
-  // Escape the prompt for shell safety
-  const assembled = runnerTemplate.replace("{prompt}", prompt);
-
-  // Detect the user's shell
-  const shell = process.env.SHELL || "/usr/bin/env bash";
-
-  // Execute as interactive login shell to load .zshrc / .bashrc / .profile
-  // -l = login shell (loads profile)
-  // -i = interactive (loads rc file — needed for .zshrc on macOS)
-  // -c = execute command string
-  const proc = Bun.spawn([shell, "-l", "-i", "-c", assembled], {
-    cwd: process.cwd(),
-    stdin: "inherit",
-    stdout: "inherit",
-    stderr: "inherit",
-    env: {
-      ...process.env,
-      // Ensure color output passes through
-      FORCE_COLOR: "1",
-    },
-  });
-
-  const exitCode = await proc.exited;
-  return { exitCode, stdout: "", stderr: "" };
-}
-```
-
-> **Why `-l -i`?** On macOS with zsh (the default), `.zshrc` only loads for interactive shells, while `.zprofile` loads for login shells. Using both flags ensures we pick up PATH modifications regardless of where the user configured them. This is the same strategy used by VS Code's integrated terminal.
-
-> **Why `stdin: "inherit"`?** Some runners (like `claude` in interactive mode) may need terminal input. Inheriting stdin keeps that working.
-
-### Prompt Assembly
-
-```typescript
-export function assemblePrompt(
-  userPrompt: string,
-  changedFiles: string[]
-): string {
-  return [
-    `<prompt>${userPrompt}</prompt>`,
-    `<changed-files>${changedFiles.join(", ")}</changed-files>`,
-  ].join("\n");
-}
-```
-
-### Shell Escaping
-
-The assembled prompt contains user text and file paths. It gets interpolated into a shell command. This is a shell injection vector.
-
-**Strategy: write the prompt to a temp file and pass the path.**
-
-No — that changes the runner contract. The runner expects `{prompt}` to be the literal prompt string.
-
-**Strategy: escape for shell.**
-
-The prompt is embedded in a double-quoted string in the runner template. We must escape:
-- `"` → `\"`
-- `$` → `\$`
-- `` ` `` → `` \` ``
-- `\` → `\\`
-- `!` → `\!` (bash history expansion)
-
-```typescript
-export function shellEscape(s: string): string {
-  return s
-    .replace(/\\/g, "\\\\")
-    .replace(/"/g, '\\"')
-    .replace(/\$/g, "\\$")
-    .replace(/`/g, "\\`")
-    .replace(/!/g, "\\!");
-}
-```
-
-The interpolation then becomes:
-
-```typescript
-const escaped = shellEscape(prompt);
-const command = runnerTemplate.replace("{prompt}", escaped);
-```
-
----
-
-## CLI Entrypoint (`index.ts`)
-
-### Argument Parsing
-
-Keep it minimal. No framework needed — `process.argv` slicing is sufficient for this surface area.
-
-```
-llmake                     # run all tasks with changes
-llmake <task>              # run specific task if changed
-llmake --force [task]      # run regardless of hash state
-llmake --dry-run [task]    # show what would run
-llmake --status            # show per-task change status
-llmake --init              # write a starter llmake.jsonc
-llmake --config <path>     # use specific config file
-llmake --help              # print usage
-llmake --version           # print version
-```
-
-### Orchestration (main loop)
-
-```
-1. Parse CLI args
-2. Discover + load config
-3. Read .llmake.lock
-4. Determine which tasks to process (all or specified)
-5. For each task:
-   a. Resolve globs → file list
-   b. Hash all files
-   c. Compute Merkle root
-   d. Diff against lockfile
-   e. If --status: print status, continue
-   f. If --dry-run: print what would execute, continue
-   g. If no changes and not --force: skip, log "task: no changes"
-   h. Assemble prompt XML
-   i. Interpolate into runner
-   j. Execute via login shell
-   k. If exit 0: update lockfile entry, write .llmake.lock
-   l. If exit != 0: leave lockfile unchanged, log error
-6. Exit with appropriate code
-```
-
-### Console Output
-
-Minimal, structured. No spinners, no progress bars. This is a build tool, not a TUI.
-
-```
-llmake: loaded llmake.jsonc (3 tasks)
-llmake: skill — 3 files changed (src/cli.py, src/load.py, src/dedupe.py)
-llmake: skill — running: claude --print --prompt "..."
-llmake: skill — done (14.2s)
-llmake: readme — no changes
-llmake: api-docs — 1 file changed (src/api/routes.ts)
-llmake: api-docs — running: codex --prompt "..."
-llmake: api-docs — done (8.7s)
-llmake: updated .llmake.lock
-```
-
-With `--status`:
-
-```
-llmake: skill — changed (3 files)
-llmake: readme — up to date
-llmake: api-docs — changed (1 file)
-```
-
-With `--dry-run`:
-
-```
-llmake: skill — would run: claude --print --prompt "<prompt>Update the Claude Code skill...</prompt>\n<changed-files>src/cli.py, src/load.py</changed-files>"
-llmake: readme — no changes, would skip
-```
-
----
-
-## `llmake --init`
-
-Creates a starter `llmake.jsonc` in the current directory:
-
-```jsonc
-{
-  // llmake: content-addressed LLM generation
-  // Docs: https://github.com/CyrusNuevoDia/llmake
-
-  // Default runner. {prompt} is the only injected variable.
-  "runner": "claude --print --prompt \"{prompt}\"",
-
-  "tasks": {
-    "example": {
-      "prompt": "Describe what this task should do.",
-      "sources": ["src/**/*.ts"],
-      "exclude": ["src/**/*.test.ts"]
-    }
-  }
-}
-```
-
----
-
-## Build & Distribution
-
-### Development
-
-```bash
-bun run src/index.ts          # run directly
-bun test                      # run test suite
-```
-
-### Compile
-
-```bash
-# Current platform
-bun build src/index.ts --compile --outfile llmake
-
-# Cross-compile
-bun build src/index.ts --compile --target=bun-darwin-arm64 --outfile llmake-macos-arm64
-bun build src/index.ts --compile --target=bun-linux-x64 --outfile llmake-linux-x64
-bun build src/index.ts --compile --target=bun-windows-x64 --outfile llmake-windows-x64.exe
-```
-
-### package.json
+Preserve llmake's lockfile mechanism. The lockfile (`.lens/lock.json`) tracks:
 
 ```json
 {
-  "name": "llmake",
-  "version": "0.1.0",
-  "type": "module",
-  "bin": {
-    "llmake": "./src/index.ts"
-  },
-  "scripts": {
-    "dev": "bun run src/index.ts",
-    "build": "bun build src/index.ts --compile --outfile bin/llmake",
-    "test": "bun test"
-  },
-  "dependencies": {
-    "smol-toml": "^1.3.0"
-  },
-  "devDependencies": {
-    "@types/bun": "latest"
+  "version": 1,
+  "tasks": {
+    "sync": {
+      "last_run": "2026-04-20T10:30:00.000Z",
+      "sources_hash": "sha256:...",
+      "files": { ".lenses/schema.md": "sha256:...", ... }
+    },
+    "pull": { ... }
   }
 }
 ```
 
+For `sync`, the `sources` set is **all lens files** (`lenses[].path` for every lens). A change to any lens triggers sync.
+
+For `pull`, the `sources` set is code files. The user declares them in a `pullSources` field per lens (Phase 4 — see §9).
+
 ---
 
-## Test Cases
+## 5. Prompt Templates
 
-### `config.test.ts` — Config Discovery & Loading
+> **Design principle**: Push semantic decisions into prompts, not into the task graph. The LLM decides which files to update; the engine only decides which prompts to run.
 
-```
-✓ discovers llmake.jsonc in cwd
-✓ discovers llmake.json when no .jsonc exists
-✓ discovers llmake.toml when no .json/.jsonc exists
-✓ discovers llmake.ts when no other configs exist
-✓ respects priority order (llmake.ts wins over llmake.jsonc if both exist)
-✓ --config flag overrides autodiscovery
-✓ exits code 2 when no config found
-✓ parses JSONC with single-line comments
-✓ parses JSONC with multi-line comments
-✓ parses JSONC with trailing commas
-✓ does not strip comments inside strings (e.g. URLs with //)
-✓ parses TOML config correctly
-✓ evaluates llmake.ts default export (object)
-✓ evaluates llmake.ts default export (async function)
-✓ rejects llmake.ts that exports neither object nor function
-✓ rejects config missing runner field
-✓ rejects config with runner missing {prompt}
-✓ rejects config with empty tasks
-✓ rejects task missing prompt
-✓ rejects task missing sources
-✓ rejects task with empty sources array
-✓ accepts task without exclude (optional field)
-✓ validates per-task runner contains {prompt}
-✓ error messages include task name and field
-```
+Template variables available at prompt-assembly time:
 
-### `hash.test.ts` — Hashing & Glob Resolution
+| Variable                  | Meaning                                                                       |
+| ------------------------- | ----------------------------------------------------------------------------- |
+| `{intent}`                | The `intent` field from config                                                |
+| `{lenses}`                | A structured dump of every lens: name, path, description, current content     |
+| `{changed_files}`         | List of files that changed (by hash) since last task run                      |
+| `{changed_files_content}` | Same, but with file contents inlined                                          |
+| `{git_diff_since:<ref>}`  | `git diff <ref> -- <task-sources>` output. Empty string if ref doesn't exist. |
+
+The engine substitutes these at runtime. If a variable appears in a template but has no value (e.g. `git_diff_since` when the ref doesn't exist), substitute a placeholder: `(no previous sync — treat current state as baseline)`.
+
+### 5.1 Generate prompt (used by `init` and `add`)
 
 ```
-✓ hashes a file to deterministic sha256
-✓ same content in different files produces same hash
-✓ single byte change produces different hash
-✓ handles empty files (hash of empty string)
-✓ handles binary files without error
-✓ handles large files via streaming (doesn't OOM)
-✓ Merkle root is deterministic for same file set
-✓ Merkle root changes when any file content changes
-✓ Merkle root changes when a file is renamed (same content)
-✓ Merkle root is independent of glob evaluation order
-✓ resolves basic glob pattern (src/*.py)
-✓ resolves recursive glob (src/**/*.py)
-✓ resolves multiple source patterns (union)
-✓ applies exclude patterns correctly
-✓ exclude pattern removes files matched by sources
-✓ glob does not match dotfiles by default
-✓ returns sorted, deduplicated file list
-✓ returns empty array when no files match
+You are initializing a set of lens files that describe a software system.
+
+INTENT (what the user wants to build):
+{intent}
+
+LENS DEFINITIONS (what each lens should contain):
+{lenses}
+
+CURRENT STATE OF LENS FILES (some may be empty):
+{changed_files_content}
+
+Populate any lens files that are currently empty or missing. For each lens,
+use its description as guidance for format and content. Maintain internal
+consistency: if the schema lens defines a User table, the roles lens should
+reference it, etc.
+
+Do nothing to lens files that already have content. Making no changes to
+non-empty files is correct.
+
+Use Write or Edit tools to update the files at the paths listed in the
+lens definitions.
 ```
 
-### `lock.test.ts` — Lockfile Management
+### 5.2 Sync prompt
 
 ```
-✓ returns empty lock when .llmake.lock doesn't exist
-✓ reads and parses existing .llmake.lock
-✓ writes .llmake.lock with stable JSON formatting
-✓ written lockfile is valid JSON and roundtrips cleanly
-✓ diff detects no changes when Merkle root matches
-✓ diff fast-paths on Merkle root match (skips per-file comparison)
-✓ diff detects new files
-✓ diff detects modified files
-✓ diff detects removed files
-✓ diff detects file renames (removed + added)
-✓ diff treats missing lock entry as "everything changed"
-✓ per-task independence: updating task A doesn't affect task B's hashes
-✓ failed task does not update lock entry
-✓ successful task updates only its own lock entry
+You are maintaining consistency across a set of lens files.
+
+INTENT:
+{intent}
+
+LENS DEFINITIONS:
+{lenses}
+
+CHANGES SINCE LAST SYNC:
+{git_diff_since:lens/synced}
+
+CURRENT FULL CONTENT OF ALL LENSES:
+{changed_files_content}
+
+The user has edited one or more lens files. Read the diff above to see what
+changed. Update any other lens files that need to change to restore
+consistency.
+
+Rules:
+- Preserve human-authored prose where possible. Prefer targeted edits over
+  full rewrites.
+- Making no changes to a lens that is already consistent is correct and
+  expected. Do not rewrite files that don't need updates.
+- If two changes imply contradictory updates to a third lens, do not guess.
+  Instead, leave the third lens unchanged and print a clearly-labeled
+  conflict report explaining the contradiction.
+- Use Edit (preferred) or Write tools to update files.
 ```
 
-### `runner.test.ts` — Prompt Assembly & Shell Execution
+### 5.3 Pull prompt
 
 ```
-✓ assembles prompt XML with changed files
-✓ assembles prompt XML with single changed file
-✓ shell-escapes double quotes in prompt
-✓ shell-escapes dollar signs in prompt
-✓ shell-escapes backticks in prompt
-✓ shell-escapes backslashes in prompt
-✓ shell-escapes exclamation marks in prompt
-✓ handles prompt with all special characters combined
-✓ interpolates escaped prompt into runner template
-✓ uses task-level runner when specified
-✓ falls back to default runner when task has no runner
-✓ executes command in a login shell (-l -i -c)
-✓ detects user shell from $SHELL env var
-✓ falls back to /bin/sh when $SHELL is unset
-✓ inherits stdin for interactive runners
-✓ inherits stdout/stderr for runner output passthrough
-✓ returns exit code 0 on runner success
-✓ returns non-zero exit code on runner failure
-✓ passes FORCE_COLOR=1 in environment
-✓ executes in current working directory
+You are updating lens files to reflect the current state of the codebase.
+
+INTENT:
+{intent}
+
+LENS DEFINITIONS:
+{lenses}
+
+CURRENT LENS CONTENT:
+{changed_files_content}
+
+CODE CHANGES SINCE LAST PULL:
+{git_diff_since:lens/applied}
+
+For each lens, determine whether the code state implies changes to that
+lens. If yes, update the lens file. If no, leave it alone.
+
+Focus on intent-level changes. Do not pollute lenses with implementation
+details — only surface what belongs at the lens's level of abstraction.
+
+Use Edit or Write tools to update files.
 ```
 
-### `integration.test.ts` — End-to-End
+---
 
-These tests use a temporary directory with real files and a mock runner (a simple script that echoes its arguments and exits 0).
+## 6. Git Ref Management
 
-```
-✓ full run: discovers config, hashes files, detects changes, invokes runner, writes lock
-✓ second run with no file changes: skips all tasks
-✓ second run after modifying one file: runs only affected task
-✓ second run after adding a new file matching glob: detects and includes it
-✓ second run after deleting a file: detects removal as a change
-✓ --force flag runs task even when no changes detected
-✓ --dry-run prints command but does not execute or update lock
-✓ --status prints per-task change summary without executing
-✓ runner failure (exit code 1) does not update lockfile
-✓ runner failure for one task does not prevent other tasks from running
-✓ per-task runner override is used when specified
-✓ works with llmake.jsonc config
-✓ works with llmake.json config
-✓ works with llmake.toml config
-✓ works with llmake.ts config (object export)
-✓ works with llmake.ts config (async function export)
-✓ handles task with no matching source files (treats as "no changes")
-✓ handles special characters in file paths
-✓ creates .llmake.lock on first run
-✓ --init creates starter llmake.jsonc
-✓ --init refuses to overwrite existing config
-```
+Two refs, managed by the engine:
 
-### Mock Runner for Tests
+- `lens/synced` — advanced after every successful `sync` (and after `init`/`add` generation, since those also produce internally-consistent state).
+- `lens/applied` — advanced after every successful `apply` (and after `pull`, since pull makes lenses match code).
 
-Create a simple script at `test/fixtures/mock-runner.sh`:
+### Ref semantics
+
+- Refs point to **commits**, not working-tree state. The engine does not auto-commit — it advances the ref only when the user has a clean working tree and the operation succeeded, OR when the engine creates its own commit (see below).
+- On first `sync`/`apply`/`pull` in a repo, if the ref doesn't exist, create it pointing at current HEAD.
+- If the working tree has uncommitted changes when an operation completes successfully, the engine:
+  1. Prints a message: `"Lens operation complete. Commit your changes and run 'lens mark-synced' (or mark-applied) to advance the ref."`
+  2. Does NOT advance the ref automatically.
+  3. Provides `lens mark-synced` and `lens mark-applied` as explicit verbs that advance the corresponding ref to HEAD.
+
+This avoids the engine making commits on the user's behalf, which is invasive. The user controls commits; Lens tracks state.
+
+### Ref creation/update
+
+Use `git update-ref refs/heads/lens/synced <sha>` or equivalent. Refs are in a namespaced location (`refs/lens/synced`, `refs/lens/applied`) to avoid colliding with branches. Use `refs/lens/*` not `refs/heads/lens/*`.
 
 ```bash
-#!/usr/bin/env bash
-# Mock runner that logs invocation and exits successfully.
-# Writes the received prompt to a file for assertion.
-echo "$1" > /tmp/llmake-test-prompt.txt
-exit 0
+git update-ref refs/lens/synced HEAD
+git rev-parse refs/lens/synced     # read
 ```
 
-And a failing variant:
+### Missing-ref handling
+
+When computing `{git_diff_since:lens/synced}`:
+
+- If ref exists: `git diff <ref> -- <paths>`
+- If ref does not exist: substitute placeholder string `(no previous sync — treat current state as baseline)`
+
+---
+
+## 7. CLI Surface
+
+```
+lens init [description] [--template <name>]
+lens add <name> [--description <text>] [--path <path>]
+lens sync [--force] [--dry-run]
+lens apply [--dry-run]
+lens pull [--force] [--dry-run]
+lens status
+lens mark-synced
+lens mark-applied
+lens --config <path>
+lens --help
+lens --version
+```
+
+### 7.1 `lens init [description]`
+
+Initialize a Lens setup in the current directory.
+
+Behavior:
+
+1. If `.lenses/config.yaml` already exists, fail with a clear error unless `--force` is passed.
+2. Prompt for intent if `[description]` is not provided (read from stdin).
+3. Select template: either from `--template` flag, or default to `webapp`.
+4. Write `.lenses/config.yaml` with intent + template's lens definitions + default runner.
+5. Create empty files at each `lenses[].path`.
+6. Run the generate task to populate lens files.
+7. Create `refs/lens/synced` pointing at HEAD (if in a git repo).
+8. Print next steps: "Review `.lenses/`, commit, then edit any lens to start iterating."
+
+### 7.2 `lens add <name>`
+
+Add a new lens to the set.
+
+Behavior:
+
+1. Read `.lenses/config.yaml`.
+2. Prompt for description and path (or accept via flags).
+3. Append to `lenses[]`.
+4. Write updated config.
+5. Create empty file at `path`.
+6. Run generate task (only this lens is empty — generate will populate just it).
+7. Print: "Added lens '{name}'. Review and commit."
+
+### 7.3 `lens sync [--force]`
+
+Reconcile lens files with each other.
+
+Behavior:
+
+1. Check that all lens files listed in config exist. If any are missing, fail with clear message suggesting `lens add` or manual creation.
+2. Compute sources hash over all lens files.
+3. If `--force` is passed OR sources hash changed since last sync (per lockfile): proceed. Otherwise, print "Nothing to sync" and exit 0.
+4. Assemble sync prompt with `{git_diff_since:lens/synced}` populated.
+5. Invoke runner with assembled prompt.
+6. On runner success:
+   - Update lockfile with new hashes.
+   - If working tree is clean: advance `refs/lens/synced` to HEAD automatically.
+   - If working tree is dirty: print "Sync complete. Commit changes and run `lens mark-synced` to advance ref."
+7. On runner failure: exit 1 without updating lockfile or ref.
+
+### 7.4 `lens apply`
+
+Make the codebase match the lenses. This verb **delegates to Claude Code plan mode** when run via the plugin; as a pure CLI, it prepares context and prints instructions.
+
+CLI behavior:
+
+1. Assemble context: all lens files + `git diff lens/applied -- .lenses/` + a scan summary of the codebase (file tree, not contents).
+2. Print the assembled context bundle to stdout with instructions: "Pipe this to your coding agent, or run `/lens:apply` in Claude Code for integrated plan-mode handoff."
+3. Do not invoke a runner directly for `apply` — this is a user-in-the-loop operation, and plan mode in Claude Code is the right surface.
+4. `lens apply --dry-run` prints the same context without the instructions footer.
+
+The plugin-side `/lens:apply` command (see §8) handles the actual plan-mode entry.
+
+### 7.5 `lens pull [--force]`
+
+Update lens files to reflect current code state.
+
+Behavior mirrors `sync`, but:
+
+- Sources are code files, not lens files. Initially (MVP) use a hardcoded heuristic: every file tracked by git that is NOT under `.lenses/`. Phase 4 adds per-lens `pullSources` glob config.
+- Prompt template is the pull prompt (§5.3).
+- Ref advanced on success is `refs/lens/applied` (since pulling means lenses now match code).
+
+### 7.6 `lens status`
+
+Print a structured status report:
+
+```
+Lens status
+───────────
+
+Repository: /Users/cyrus/work/invoicing-app
+Config:     .lenses/config.yaml (6 lenses)
+
+Refs:
+  lens/synced   abc1234 (2 hours ago)
+  lens/applied  def5678 (1 day ago)
+
+Lens set:
+  ✓ schema        .lenses/schema.md           up to date
+  ⚠ api           .lenses/api.md              edited since last sync
+  ✓ roles         .lenses/roles.md            up to date
+  ✓ flows         .lenses/flows.md            up to date
+  ✓ jobs          .lenses/jobs.md             up to date
+  ✓ wireframes    .lenses/wireframes.md       up to date
+
+Code:
+  ⚠ 12 code files changed since last apply
+
+Suggestions:
+  • Run `lens sync` to propagate api.md edits to other lenses
+  • Run `lens pull` to reflect code changes in lenses, OR
+    run `lens apply` to propagate lens changes into code
+```
+
+Status derivation:
+
+- For each lens: compare current hash to lockfile hash. If different, mark as "edited since last sync."
+- For code: `git diff --name-only lens/applied -- . ':(exclude).lenses/'` count.
+- Suggestions follow from the detected drift pattern.
+
+### 7.7 `lens mark-synced` / `lens mark-applied`
+
+Advance the corresponding ref to HEAD. Fail if HEAD is the same as the ref already, or if not in a git repo.
+
+---
+
+## 8. Claude Code Plugin
+
+Standard plugin layout:
+
+```
+lens-plugin/
+├── .claude-plugin/
+│   └── plugin.json
+├── commands/
+│   ├── lens:init.md
+│   ├── lens:add.md
+│   ├── lens:sync.md
+│   ├── lens:apply.md
+│   ├── lens:pull.md
+│   └── lens:status.md
+└── skills/
+    ├── lens-init/SKILL.md
+    ├── lens-add/SKILL.md
+    ├── lens-sync/SKILL.md
+    ├── lens-apply/SKILL.md
+    ├── lens-pull/SKILL.md
+    └── lens-status/SKILL.md
+```
+
+Each skill is thin. The pattern for all except `apply`:
+
+1. Parse slash command arguments.
+2. Run `lens <verb> <args>` via Bash tool.
+3. Stream output to the Claude Code transcript.
+4. If the CLI exits non-zero, surface the error to the user.
+
+### `/lens:apply` — the one special case
+
+This skill does real orchestration because the CLI's `apply` stops short of plan mode.
+
+1. Run `lens apply --dry-run` to get the assembled context bundle.
+2. Call `EnterPlanMode` with a prompt constructed as:
+   > "Here are the lens files and the delta since last apply. Produce a plan to make the codebase match the lenses. Focus on the deltas; ignore unchanged lenses unless their implementation is currently broken."
+   > Followed by the context bundle.
+3. After plan execution completes:
+   - Check git working-tree state.
+   - If clean and HEAD has advanced: run `lens mark-applied`.
+   - If dirty: instruct the user to commit and run `lens mark-applied` manually.
+
+### Plugin prerequisites check
+
+On any slash command invocation, skills should first check:
+
+1. `lens` binary is on PATH. If not, instruct: `npm i -g lens` (or equivalent).
+2. `.lenses/config.yaml` exists (skip this check for `/lens:init`).
+
+If either check fails, surface a clean error and exit without calling the CLI.
+
+---
+
+## 9. Templates
+
+Templates are pre-built `.lenses/config.yaml` files shipped with the CLI. Stored in the repo under `templates/<name>.yaml`.
+
+### MVP template set
+
+| Template           | Lenses                                                |
+| ------------------ | ----------------------------------------------------- |
+| `webapp` (default) | schema, api, roles, jobs, flows, wireframes           |
+| `cli`              | commands, flags, exit-codes, scenarios, manpage       |
+| `library`          | public-api, types, errors, examples                   |
+| `pipeline`         | inputs, stages, outputs, failure-modes, observability |
+| `protocol`         | messages, state-machine, wire-format, conformance     |
+| `blank`            | (no lenses — user adds with `lens add`)               |
+
+### Template file format
+
+Identical to user `.lenses/config.yaml` format. The `intent` field in templates is a placeholder (`TODO: describe your system`); `lens init` replaces it with the user's actual description before writing.
+
+### Template selection
 
 ```bash
-#!/usr/bin/env bash
-exit 1
+lens init --template cli "A CLI for managing Docker compose files"
 ```
 
-Test configs use these as runners:
+If `--template` is omitted, use `webapp`. A future `lens init --interactive` could prompt the user to pick.
 
-```jsonc
-{
-  "runner": "bash test/fixtures/mock-runner.sh \"{prompt}\"",
-  "tasks": { ... }
-}
-```
+### Ship templates via package resources
+
+Templates live in `templates/` in the npm package. The `lens init` command reads them from the installed package directory. Do NOT fetch from the internet at runtime.
 
 ---
 
-## Edge Cases & Error Handling
+## 10. Implementation Phases
 
-### Config Errors
-- Missing or invalid config → exit code 2, descriptive message
-- Config file parse error (bad JSON, bad TOML) → exit code 2, include file name and parse error
-- `llmake.ts` that throws during evaluation → exit code 2, include the thrown error
+Each phase is independently demoable.
 
-### Filesystem Edge Cases
-- Source glob matches zero files → task is treated as "no changes" (not an error)
-- Source file is deleted between glob resolution and hashing → log warning, skip file
-- `.llmake.lock` is malformed → treat as empty lock (log warning), regenerate on next successful run
-- Config file disappears mid-run → this can't happen (it's loaded once at startup)
+### Phase 1 — Fork + CLI skeleton + `init`
 
-### Runner Edge Cases
-- Runner command not found (e.g. `claude` not in PATH) → the login shell will return exit code 127; llmake reports this as a runner failure
-- Runner hangs indefinitely → llmake does not impose a timeout (the user can Ctrl+C; the signal propagates via inherited stdin)
-- Runner prints to stdout/stderr → passed through directly since we inherit stdio
+- Fork llmake, rename to `lens`.
+- Rip out user-facing task config; replace with lens-centric config schema.
+- Implement `lens init` including template loading, file scaffolding, and initial generate pass.
+- Ship `webapp` and `blank` templates.
+- Preserve llmake's lockfile, runner, and hashing infrastructure.
 
-### Concurrency
-- llmake runs tasks in parallel and uses a lock around the lockfile to ensure atomicity. It always reads then writes.
+**Milestone**: `lens init "a task tracker"` produces a `.lenses/` directory with 6 populated lens files.
+
+### Phase 2 — `sync` + `status`
+
+- Implement `lens sync` with `{git_diff_since:lens/synced}` template variable.
+- Implement git ref management (`refs/lens/synced`, `lens mark-synced`).
+- Implement `lens status`.
+- Add `cli`, `library`, `pipeline`, `protocol` templates.
+
+**Milestone**: User edits `schema.md`, runs `lens sync`, other lenses update consistently. `lens status` accurately reports drift.
+
+### Phase 3 — `apply` + plugin
+
+- Implement `lens apply --dry-run` (context bundle assembly).
+- Implement `refs/lens/applied` + `lens mark-applied`.
+- Build Claude Code plugin with all slash commands.
+- `/lens:apply` handles plan-mode entry and post-plan ref advancement.
+
+**Milestone**: Full loop: user iterates on lenses → `/lens:apply` → plan mode generates code → ref advances.
+
+### Phase 4 — `pull` + `add`
+
+- Implement `lens pull` with pullSources config per lens.
+- Implement `lens add <name>` for extending the lens set.
+- Add per-lens `pullSources` field to config schema.
+
+**Milestone**: Bidirectional sync. User modifies code directly, runs `lens pull`, relevant lenses update.
+
+### Phase 5 — Polish
+
+- `lens diff` — preview `apply` changes without entering plan mode.
+- `lens validate` — sanity-check config (missing files, broken paths, unreachable lenses).
+- Conflict surfacing in sync output (structured format, not just prose).
+- Optional `affects:` graph in config to prune sync scope for large lens sets.
 
 ---
 
-## Future Considerations (Not in v0.1)
+## 11. Key Implementation Notes
 
-- **Watch mode** (`llmake --watch`) — re-run on filesystem changes via `fs.watch`
-- **Task dependencies** — `"after": ["skill"]` field for ordering
-- **Prompt files** — `"prompt_file": "prompts/skill.md"` for long prompts
-- **CI mode** — `--ci` flag that exits non-zero if any task has pending changes (for drift detection in CI)
-- **Parallel execution** — run independent tasks concurrently
+### 11.1 Prompt assembly via single-task-then-LLM-decides
+
+llmake's model is N tasks → N LLM calls. Lens's model is **1 task → 1 LLM call → LLM updates multiple files via tool use**. This requires the runner to have write access to lens files.
+
+The default runner (`claude --allowed-tools Read,Write,Edit,Bash --print {prompt}`) provides this. The engine does not need to know which files the LLM updated — the lockfile hash comparison on the next run detects all changes.
+
+If a user supplies a runner that cannot write files (e.g. `llm -m gpt-4o {prompt}` with no tool use), Lens will not work correctly. Document this prominently in the README.
+
+### 11.2 Working tree cleanliness
+
+Many operations (sync, apply, pull, mark-\*) depend on git state. The engine should:
+
+- Check `git status --porcelain` to determine cleanliness.
+- Warn loudly when operating on a dirty tree.
+- Never force-commit. Never amend commits.
+- Never move refs when the operation would lose user work.
+
+### 11.3 `{changed_files}` vs `{changed_files_content}`
+
+llmake passes changed file contents. For Lens:
+
+- `{changed_files}`: Just file paths, one per line.
+- `{changed_files_content}`: Paths + contents in structured format (e.g. XML blocks).
+
+Both should be available; prompt templates choose which to use. The sync prompt needs content; a lightweight "what's dirty" status check needs only paths.
+
+### 11.4 Lockfile location
+
+Move from `.llmake.lock` (llmake default, repo root) to `.lens/lock.json`. This groups lens-engine state under a single hidden directory, leaving room for future cached artifacts (e.g. pre-computed diffs, template cache) under `.lens/`.
+
+Add `.lens/` to a default `.gitignore` entry created by `lens init`? **No.** The lockfile _should_ be committed — it's how team members share state. Document this clearly.
+
+### 11.5 Error handling
+
+Every CLI verb should:
+
+- Validate config before doing anything destructive.
+- Exit with meaningful codes:
+  - `0` — success
+  - `1` — operation failure (runner error, conflict, etc.)
+  - `2` — config missing or invalid
+  - `3` — git state incompatible (e.g., mark-synced on dirty tree)
+- Print errors to stderr, results to stdout.
+
+### 11.6 Concurrency
+
+Out of scope for MVP. Assume single-user, single-invocation. Add file locking in Phase 5 if needed.
+
+---
+
+## 12. Non-Goals
+
+Explicitly NOT in scope for any phase of this spec:
+
+- A visual editor. Lenses are files; editors are user choice.
+- A web UI or service component. Lens is a local CLI + Claude Code plugin only.
+- Multi-user collaborative editing beyond what git provides.
+- LLM caching or prompt deduplication across invocations.
+- Non-Claude runners as first-class citizens (they should work, but are not tested or optimized for).
+- Support for non-git version control systems.
+
+---
+
+## 13. Open Questions for Implementation
+
+Surface these to the user (Cyrus) before implementing if they block progress. Otherwise, note the decision taken in PR descriptions.
+
+1. **Package name**: `lens` on npm is likely taken. Fall back to `@cyrusnuevodia/lens` or choose alternative?
+2. **Binary conflict**: `lens` is a common word; some systems may have a `lens` binary already. Consider shipping `lensctl` or similar as a fallback. Default: `lens`.
+3. **Shell-quoting edge cases**: Lens templates and prompts contain user-authored prose including quotes, newlines, and markdown. llmake shell-escapes the `{prompt}` substitution. Verify this holds for Lens's much longer prompts (possibly tens of KB). If shell arg length limits become an issue, consider writing prompt to a temp file and passing `--prompt-file` to supported runners.
+4. **Plan mode API surface**: Verify Claude Code's current plan mode entry points. If plan mode cannot be entered programmatically from a skill, `/lens:apply` must end by instructing the user to enter plan mode manually.
+
+---
+
+## 14. Definition of Done (per phase)
+
+A phase is complete when:
+
+- All listed verbs work end-to-end on a test project.
+- `lens status` accurately reflects state after each operation.
+- Integration test script exists that runs the full flow and checks expected file states + ref positions.
+- README for that phase's verbs is written.
+- Changelog entry added.
+
+---
+
+_End of spec. Implement Phase 1 first; verify; proceed in order._
