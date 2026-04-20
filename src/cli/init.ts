@@ -1,9 +1,9 @@
-import { spawn } from "node:child_process";
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { createInterface } from "node:readline/promises";
 import { loadConfig } from "../config";
 import { Exit, type ExitCode } from "../exit";
+import { getHead, isGitRepo, updateRef } from "../git";
 import { computeMerkleRoot, hashFile } from "../hash";
 import { writeLock } from "../lock";
 import type { FileSnapshot } from "../prompts";
@@ -78,28 +78,6 @@ async function snapshotLensFiles(
     snapshots.push({ path: lensPath, content });
   }
   return snapshots;
-}
-
-function isGitRepo(cwd: string): Promise<boolean> {
-  return new Promise((res) => {
-    const proc = spawn("git", ["rev-parse", "--git-dir"], {
-      cwd,
-      stdio: "ignore",
-    });
-    proc.on("close", (code) => res(code === 0));
-    proc.on("error", () => res(false));
-  });
-}
-
-async function updateRef(cwd: string, ref: string): Promise<void> {
-  await new Promise<void>((res) => {
-    const proc = spawn("git", ["update-ref", ref, "HEAD"], {
-      cwd,
-      stdio: "ignore",
-    });
-    proc.on("close", () => res());
-    proc.on("error", () => res());
-  });
 }
 
 /**
@@ -204,7 +182,14 @@ export async function runInit(args: InitArgs): Promise<ExitCode> {
   });
 
   if (await isGitRepo(cwd)) {
-    await updateRef(cwd, "refs/lens/synced");
+    const head = await getHead(cwd);
+    if (head) {
+      try {
+        await updateRef("refs/lens/synced", head, cwd);
+      } catch {
+        // Preserve init's existing best-effort ref advancement behavior.
+      }
+    }
   }
 
   console.log(

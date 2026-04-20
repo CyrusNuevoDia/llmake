@@ -1,0 +1,45 @@
+# cli template — a scaffold for command-line tools.
+# The __LENS_INTENT_PLACEHOLDER__ token below is substituted by `lens init`.
+
+intent: __LENS_INTENT_PLACEHOLDER__
+
+runner: claude --allowed-tools Read,Write,Edit,Bash --print {prompt}
+
+settings:
+  autoApprove: false
+
+lenses:
+  - name: commands
+    path: .lenses/commands.md
+    description: |
+      Document every top-level command as its own markdown subsection. For
+      each command, include purpose, positional args, supported flags, and
+      exit codes, and cross-reference the shared flags and exit-code lenses.
+
+  - name: flags
+    path: .lenses/flags.md
+    description: |
+      Maintain one markdown table covering all flags: `name | short | type |
+      default | applies-to`. Keep names canonical, note command scope, and
+      avoid repeating per-command prose unless behavior differs materially.
+
+  - name: exit-codes
+    path: .lenses/exit-codes.md
+    description: |
+      Use a numbered markdown table mapping each exit code to meaning and the
+      exact condition that returns it. Keep entries stable across commands and
+      align examples and manpage language with this canonical list.
+
+  - name: scenarios
+    path: .lenses/scenarios.md
+    description: |
+      Capture task-focused usage as sections titled "The user wants to X".
+      Under each, give a bullet list of the command sequence, expected output
+      or side effects, and any prerequisite state or configuration.
+
+  - name: manpage
+    path: .lenses/manpage.md
+    description: |
+      Assemble a full `man(1)`-style reference with NAME, SYNOPSIS,
+      DESCRIPTION, COMMANDS, OPTIONS, EXIT STATUS, and EXAMPLES. Derive it
+      from the command, flag, scenario, and exit-code lenses without drift.

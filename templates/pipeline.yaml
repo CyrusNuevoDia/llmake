@@ -1,0 +1,45 @@
+# pipeline template — a scaffold for data and processing pipelines.
+# The __LENS_INTENT_PLACEHOLDER__ token below is substituted by `lens init`.
+
+intent: __LENS_INTENT_PLACEHOLDER__
+
+runner: claude --allowed-tools Read,Write,Edit,Bash --print {prompt}
+
+settings:
+  autoApprove: false
+
+lenses:
+  - name: inputs
+    path: .lenses/inputs.md
+    description: |
+      Describe every upstream data source with schema, partitioning or keying,
+      cadence, and arrival SLA. Call out ownership, freshness assumptions, and
+      validation rules that downstream stages rely on.
+
+  - name: stages
+    path: .lenses/stages.md
+    description: |
+      Write ordered markdown sections for each pipeline stage. For every
+      stage, cover purpose, inputs, transforms, outputs, and the primary
+      failure mode so the flow can be traced end to end.
+
+  - name: outputs
+    path: .lenses/outputs.md
+    description: |
+      Catalog produced artifacts with storage location, schema, retention, and
+      consumer contract. Note how consumers discover new data and what
+      compatibility guarantees or backfill expectations they depend on.
+
+  - name: failure-modes
+    path: .lenses/failure-modes.md
+    description: |
+      Use a per-stage markdown table: `cause | symptom | blast radius |
+      recovery`. Keep recovery actions concrete, identify whether replay is
+      safe, and align terminology with the stage and observability lenses.
+
+  - name: observability
+    path: .lenses/observability.md
+    description: |
+      Define the metrics, logs, traces, and alerts that make the pipeline
+      operable. For each signal, state where it is emitted, what it measures,
+      and the threshold or condition that should page or open an incident.

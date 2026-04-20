@@ -1,0 +1,38 @@
+# library template — a scaffold for programming libraries.
+# The __LENS_INTENT_PLACEHOLDER__ token below is substituted by `lens init`.
+
+intent: __LENS_INTENT_PLACEHOLDER__
+
+runner: claude --allowed-tools Read,Write,Edit,Bash --print {prompt}
+
+settings:
+  autoApprove: false
+
+lenses:
+  - name: public-api
+    path: .lenses/public-api.md
+    description: |
+      List every exported symbol in a markdown table with `name | kind |
+      signature | summary`. Keep signatures source-like, note stability or
+      intended audience when relevant, and link types and errors by name.
+
+  - name: types
+    path: .lenses/types.md
+    description: |
+      Give each exported type or interface its own markdown section. Include
+      fields or members, required vs optional shape, semantic constraints, and
+      references back to the public API entries that expose the type.
+
+  - name: errors
+    path: .lenses/errors.md
+    description: |
+      Describe each error kind, the operation that raises it, and how callers
+      can recover or retry. Distinguish programmer misuse from runtime failure
+      and keep naming aligned with thrown classes, codes, or result variants.
+
+  - name: examples
+    path: .lenses/examples.md
+    description: |
+      Provide runnable fenced code snippets for the primary use cases, using a
+      consistent language and realistic setup. Each example should show inputs,
+      expected result or output, and any important error-handling pattern.

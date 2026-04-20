@@ -2,6 +2,9 @@
 
 import { parseArgs } from "node:util";
 import { runInit } from "./cli/init";
+import { runMark } from "./cli/mark";
+import { runStatus } from "./cli/status";
+import { runSync } from "./cli/sync";
 import { Exit, type ExitCode } from "./exit";
 
 const VERSION = "0.0.1";
@@ -10,6 +13,10 @@ const HELP = `lens ${VERSION}
 
 Usage:
   lens init [description] [--template <name>]
+  lens status
+  lens sync [--force] [--dry-run]
+  lens mark-synced
+  lens mark-applied
   lens --help
   lens --version
 
@@ -83,6 +90,25 @@ function dispatch(args: ParsedArgs): Promise<ExitCode> {
       dryRun: args.dryRun,
       configPath: args.configPath,
     });
+  }
+
+  if (args.verb === "sync") {
+    return runSync({
+      force: args.force,
+      dryRun: args.dryRun,
+      configPath: args.configPath,
+    });
+  }
+
+  if (args.verb === "status") {
+    return runStatus({ configPath: args.configPath });
+  }
+
+  if (args.verb === "mark-synced") {
+    return runMark({ which: "synced" });
+  }
+  if (args.verb === "mark-applied") {
+    return runMark({ which: "applied" });
   }
 
   console.error(`lens: unknown verb: ${args.verb}`);

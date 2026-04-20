@@ -1,0 +1,38 @@
+# protocol template — a scaffold for wire and messaging protocols.
+# The __LENS_INTENT_PLACEHOLDER__ token below is substituted by `lens init`.
+
+intent: __LENS_INTENT_PLACEHOLDER__
+
+runner: claude --allowed-tools Read,Write,Edit,Bash --print {prompt}
+
+settings:
+  autoApprove: false
+
+lenses:
+  - name: messages
+    path: .lenses/messages.md
+    description: |
+      Give every message type its own markdown section with fields, direction,
+      ordering guarantees, and preconditions. Be explicit about optionality,
+      versioning expectations, and which states allow the message to appear.
+
+  - name: state-machine
+    path: .lenses/state-machine.md
+    description: |
+      Define protocol states and transitions in a markdown table, then include
+      a fenced ASCII diagram showing the happy path and error edges. Note the
+      message or condition that triggers each transition.
+
+  - name: wire-format
+    path: .lenses/wire-format.md
+    description: |
+      Specify the on-the-wire representation in the protocol's native form:
+      byte layout, frame structure, JSON schema, or equivalent. Include field
+      encoding, lengths, delimiters, and any canonicalization requirements.
+
+  - name: conformance
+    path: .lenses/conformance.md
+    description: |
+      Capture test vectors and invariants an implementation must satisfy. For
+      each vector, show input and expected outcome, and list cross-message or
+      state-machine rules that compliant implementations may never violate.
