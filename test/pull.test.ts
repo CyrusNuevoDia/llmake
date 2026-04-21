@@ -315,7 +315,7 @@ describe("lens pull", () => {
     expect(exitCode).toBe(0);
     expect(stderr).toBe("");
     expect(stdout).toContain(
-      "Commit changes and run 'lens mark-applied' to advance ref."
+      "Commit changes and run 'lens mark applied' to advance ref."
     );
     expect(
       runGit(["rev-parse", "--verify", "refs/lens/applied"], tempDir).status

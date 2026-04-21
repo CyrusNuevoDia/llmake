@@ -20,7 +20,7 @@ export interface AddArgs {
 
 const DEFAULT_LENS_DIR = ".lenses";
 const DIRTY_TREE_GUIDANCE =
-  "lens: add complete. Commit changes and run 'lens mark-synced' to advance ref.";
+  "lens: add complete. Commit changes and run 'lens mark synced' to advance ref.";
 const LOCK_REL = ".lens/lock.json";
 
 async function fileExists(path: string): Promise<boolean> {

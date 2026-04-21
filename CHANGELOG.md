@@ -17,15 +17,15 @@ Complete fork of `llmake` into `lens-engine`, delivering all five phases of `.cl
 
 ### Phase 2 — `sync`, `status`, `mark-*`, git refs
 - `src/git.ts` Promise-based wrappers: `isGitRepo`, `isWorkingTreeClean`, `getHead`, `refExists`, `readRef`, `updateRef`, `diffSince`, `changedSince`, `repoRoot`, `commitRelativeTime`.
-- `lens sync` — propagate edits across the lens set. Advances `refs/lens/synced` on clean trees; instructs `lens mark-synced` when dirty.
+- `lens sync` — propagate edits across the lens set. Advances `refs/lens/synced` on clean trees; instructs `lens mark synced` when dirty.
 - `lens status` — formatted drift report (refs + lens set + code drift + suggestions).
-- `lens mark-synced` / `lens mark-applied` — advance either ref to HEAD.
+- `lens mark <synced|applied>` — advance either ref to HEAD.
 - Four additional templates: `cli`, `library`, `pipeline`, `protocol`.
 - Every verb works both inside and outside a git repo (except `mark-*`, which requires git).
 
 ### Phase 3 — `apply` + Claude Code plugin
 - `lens apply` — assembles a context bundle (intent + lenses + `git diff refs/lens/applied` + file tree) for downstream coding agents. Does not invoke the runner; this is a user-in-the-loop handoff.
-- Claude Code plugin at `plugin/`: skills for every verb, `/lens:apply` drives plan mode via `EnterPlanMode`, post-plan `git`-state check then `lens mark-applied`.
+- Claude Code plugin at `plugin/`: skills for every verb, `/lens:apply` drives plan mode via `EnterPlanMode`, post-plan `git`-state check then `lens mark applied`.
 
 ### Phase 4 — `pull` + `add`
 - `LensDef.pullSources?: string[]` — globs identifying code files each lens tracks.

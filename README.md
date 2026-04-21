@@ -35,7 +35,7 @@ State is tracked via two git refs:
 - `refs/lens/synced` — commit at which lenses were last internally consistent.
 - `refs/lens/applied` — commit at which code last matched lenses.
 
-When a verb completes against a clean working tree, the corresponding ref advances automatically. When the tree is dirty, the verb instructs you to commit + run `lens mark-synced` or `lens mark-applied`.
+When a verb completes against a clean working tree, the corresponding ref advances automatically. When the tree is dirty, the verb instructs you to commit + run `lens mark synced` or `lens mark applied`.
 
 ## CLI reference
 
@@ -48,8 +48,7 @@ lens diff                                    # preview of apply bundle
 lens validate                                # sanity-check config
 lens status                                  # drift report
 lens add <name> --description <text> [--path <path>] [--dry-run]
-lens mark-synced
-lens mark-applied
+lens mark <synced|applied>
 lens --config <path>                         # override .lenses/config.yaml discovery
 lens --help
 lens --version

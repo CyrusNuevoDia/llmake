@@ -79,12 +79,26 @@ function readRef(ref: string, dir: string): string {
   return expectGitOk(["rev-parse", ref], dir).trim();
 }
 
+describe("lens mark (usage errors)", () => {
+  it("fails with a usage message when no subcommand is given", async () => {
+    const { exitCode, stderr } = await runLens(["mark"]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("usage: lens mark <synced|applied>");
+  });
+
+  it("fails with a usage message for an unknown subcommand", async () => {
+    const { exitCode, stderr } = await runLens(["mark", "bogus"]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("usage: lens mark <synced|applied>");
+  });
+});
+
 for (const which of ["synced", "applied"] as const) {
-  describe(`lens mark-${which}`, () => {
+  describe(`lens mark ${which}`, () => {
     const ref = `refs/lens/${which}`;
 
     it("fails outside a git repo", async () => {
-      const { exitCode, stderr } = await runLens([`mark-${which}`]);
+      const { exitCode, stderr } = await runLens(["mark", which]);
 
       expect(exitCode).toBe(3);
       expect(stderr).toContain("requires a git repository");
@@ -93,7 +107,7 @@ for (const which of ["synced", "applied"] as const) {
     it("creates the ref at HEAD when it does not exist yet", async () => {
       gitInit(tempDir);
 
-      const { exitCode, stdout, stderr } = await runLens([`mark-${which}`]);
+      const { exitCode, stdout, stderr } = await runLens(["mark", which]);
       const head = currentHead(tempDir);
 
       expect(exitCode).toBe(0);
@@ -107,7 +121,7 @@ for (const which of ["synced", "applied"] as const) {
       const head = currentHead(tempDir);
       expectGitOk(["update-ref", ref, head], tempDir);
 
-      const { exitCode, stderr, stdout } = await runLens([`mark-${which}`]);
+      const { exitCode, stderr, stdout } = await runLens(["mark", which]);
 
       expect(exitCode).toBe(1);
       expect(stdout).toBe("");
@@ -120,7 +134,7 @@ for (const which of ["synced", "applied"] as const) {
       expectGitOk(["update-ref", ref, firstHead], tempDir);
       expectGitOk(["commit", "--allow-empty", "-q", "-m", "next"], tempDir);
 
-      const { exitCode, stdout, stderr } = await runLens([`mark-${which}`]);
+      const { exitCode, stdout, stderr } = await runLens(["mark", which]);
       const nextHead = currentHead(tempDir);
 
       expect(exitCode).toBe(0);

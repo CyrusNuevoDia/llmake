@@ -5,7 +5,9 @@ allowed-tools: Bash(lens:*)
 argument-hint: <synced|applied>
 ---
 
-Parse $0:
-- If "$0" == "synced": run `lens mark-synced`
-- If "$0" == "applied": run `lens mark-applied`
-- Else: tell the user "Usage: /lens:mark <synced|applied>" and stop.
+Run `lens mark $ARGUMENTS` via Bash (pass arguments through verbatim — the
+CLI handles the `<synced|applied>` validation and prints a usage error if
+missing or unknown).
+
+Stream the CLI's stdout/stderr to the user. If it exits non-zero, surface
+the error clearly.

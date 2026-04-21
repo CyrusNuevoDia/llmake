@@ -33,7 +33,7 @@ const PROMPT_SNAPSHOT_LIMIT = 50;
 const FALLBACK_SOURCE_GUIDANCE =
   "lens: pull — no code sources (define pullSources in .lenses/config.yaml lenses)";
 const DIRTY_TREE_GUIDANCE =
-  "lens: pull complete. Commit changes and run 'lens mark-applied' to advance ref.";
+  "lens: pull complete. Commit changes and run 'lens mark applied' to advance ref.";
 const LOCKFILE_PATHSPEC = ":(exclude).lens/lock.json";
 const GIT_CODE_EXCLUDES = [
   ":(exclude).lenses",

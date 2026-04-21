@@ -16,5 +16,5 @@ allowed-tools: Bash(lens:*) EnterPlanMode
 
 4. After the user exits plan mode (plan accepted + changes applied):
    - Run `git status --porcelain` via Bash.
-   - If empty AND HEAD has advanced past refs/lens/applied, run `lens mark-applied`.
+   - If empty AND HEAD has advanced past refs/lens/applied, run `lens mark applied`.
    - Else, tell the user: "Commit your changes, then run `/lens:mark applied` to advance the ref."

@@ -180,7 +180,7 @@ done`
     expect(stderr).toBe("");
     expect(stdout).toContain("running prompt via runner");
     expect(stdout).toContain("runner completed");
-    expect(stdout).toContain("Commit changes and run 'lens mark-synced'");
+    expect(stdout).toContain("Commit changes and run 'lens mark synced'");
 
     const lock = await readJson(join(tempDir, ".lens/lock.json"));
     const syncEntry = (lock.tasks as Record<string, unknown>).sync as
@@ -225,7 +225,7 @@ done`
     });
 
     expect(exitCode).toBe(0);
-    expect(stdout).toContain("Commit changes and run 'lens mark-synced'");
+    expect(stdout).toContain("Commit changes and run 'lens mark synced'");
     const afterRef = expectGitOk(
       ["rev-parse", "refs/lens/synced"],
       tempDir

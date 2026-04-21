@@ -241,7 +241,7 @@ export async function runSync(args: SyncArgs): Promise<ExitCode> {
   }
 
   console.log(
-    "lens: sync complete. Commit changes and run 'lens mark-synced' to advance ref."
+    "lens: sync complete. Commit changes and run 'lens mark synced' to advance ref."
   );
   return Exit.SUCCESS;
 }

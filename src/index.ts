@@ -25,8 +25,7 @@ Usage:
   lens apply [--dry-run]
   lens diff
   lens validate
-  lens mark-synced
-  lens mark-applied
+  lens mark <synced|applied>
   lens --help
   lens --version
 
@@ -150,11 +149,8 @@ function dispatch(args: ParsedArgs): Promise<ExitCode> {
     return runStatus({ configPath: args.configPath });
   }
 
-  if (args.verb === "mark-synced") {
-    return runMark({ which: "synced" });
-  }
-  if (args.verb === "mark-applied") {
-    return runMark({ which: "applied" });
+  if (args.verb === "mark") {
+    return runMark({ which: args.positionals[0] });
   }
 
   console.error(`lens: unknown verb: ${args.verb}`);

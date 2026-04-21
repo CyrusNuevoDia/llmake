@@ -270,9 +270,9 @@ Two refs, managed by the engine:
 - Refs point to **commits**, not working-tree state. The engine does not auto-commit — it advances the ref only when the user has a clean working tree and the operation succeeded, OR when the engine creates its own commit (see below).
 - On first `sync`/`apply`/`pull` in a repo, if the ref doesn't exist, create it pointing at current HEAD.
 - If the working tree has uncommitted changes when an operation completes successfully, the engine:
-  1. Prints a message: `"Lens operation complete. Commit your changes and run 'lens mark-synced' (or mark-applied) to advance the ref."`
+  1. Prints a message: `"Lens operation complete. Commit your changes and run 'lens mark synced' (or 'lens mark applied') to advance the ref."`
   2. Does NOT advance the ref automatically.
-  3. Provides `lens mark-synced` and `lens mark-applied` as explicit verbs that advance the corresponding ref to HEAD.
+  3. Provides `lens mark synced` and `lens mark applied` as explicit subcommands that advance the corresponding ref to HEAD.
 
 This avoids the engine making commits on the user's behalf, which is invasive. The user controls commits; Lens tracks state.
 
@@ -303,8 +303,7 @@ lens sync [--force] [--dry-run]
 lens apply [--dry-run]
 lens pull [--force] [--dry-run]
 lens status
-lens mark-synced
-lens mark-applied
+lens mark <synced|applied>
 lens --config <path>
 lens --help
 lens --version
@@ -353,7 +352,7 @@ Behavior:
 6. On runner success:
    - Update lockfile with new hashes.
    - If working tree is clean: advance `refs/lens/synced` to HEAD automatically.
-   - If working tree is dirty: print "Sync complete. Commit changes and run `lens mark-synced` to advance ref."
+   - If working tree is dirty: print "Sync complete. Commit changes and run `lens mark synced` to advance ref."
 7. On runner failure: exit 1 without updating lockfile or ref.
 
 ### 7.4 `lens apply`
@@ -417,7 +416,7 @@ Status derivation:
 - For code: `git diff --name-only lens/applied -- . ':(exclude).lenses/'` count.
 - Suggestions follow from the detected drift pattern.
 
-### 7.7 `lens mark-synced` / `lens mark-applied`
+### 7.7 `lens mark <synced|applied>`
 
 Advance the corresponding ref to HEAD. Fail if HEAD is the same as the ref already, or if not in a git repo.
 
@@ -464,8 +463,8 @@ This skill does real orchestration because the CLI's `apply` stops short of plan
    > Followed by the context bundle.
 3. After plan execution completes:
    - Check git working-tree state.
-   - If clean and HEAD has advanced: run `lens mark-applied`.
-   - If dirty: instruct the user to commit and run `lens mark-applied` manually.
+   - If clean and HEAD has advanced: run `lens mark applied`.
+   - If dirty: instruct the user to commit and run `lens mark applied` manually.
 
 ### Plugin prerequisites check
 
@@ -528,7 +527,7 @@ Each phase is independently demoable.
 ### Phase 2 — `sync` + `status`
 
 - Implement `lens sync` with `{git_diff_since:lens/synced}` template variable.
-- Implement git ref management (`refs/lens/synced`, `lens mark-synced`).
+- Implement git ref management (`refs/lens/synced`, `lens mark synced`).
 - Implement `lens status`.
 - Add `cli`, `library`, `pipeline`, `protocol` templates.
 
@@ -537,7 +536,7 @@ Each phase is independently demoable.
 ### Phase 3 — `apply` + plugin
 
 - Implement `lens apply --dry-run` (context bundle assembly).
-- Implement `refs/lens/applied` + `lens mark-applied`.
+- Implement `refs/lens/applied` + `lens mark applied`.
 - Build Claude Code plugin with all slash commands.
 - `/lens:apply` handles plan-mode entry and post-plan ref advancement.
 
@@ -603,7 +602,7 @@ Every CLI verb should:
   - `0` — success
   - `1` — operation failure (runner error, conflict, etc.)
   - `2` — config missing or invalid
-  - `3` — git state incompatible (e.g., mark-synced on dirty tree)
+  - `3` — git state incompatible (e.g., `mark synced` on dirty tree)
 - Print errors to stderr, results to stdout.
 
 ### 11.6 Concurrency
