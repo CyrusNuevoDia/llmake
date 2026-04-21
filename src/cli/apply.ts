@@ -11,6 +11,12 @@ export interface ApplyArgs {
   configPath?: string;
 }
 
+export interface ApplyBundle {
+  text: string;
+  codeDriftCount: number;
+  inGitRepo: boolean;
+}
+
 interface LensRecord {
   name: string;
   path: string;
@@ -215,6 +221,47 @@ function buildBundle(input: {
   ].join("\n");
 }
 
+async function assembleApplyBundleFromConfig(
+  configPath: string,
+  config: LensConfig
+): Promise<ApplyBundle> {
+  const workspaceRoot = resolve(dirname(configPath), "..");
+  const lenses = await readLensRecords(config, workspaceRoot);
+  const inGitRepo = await isGitRepo(workspaceRoot);
+
+  let diff: string | null = null;
+  let codeFiles: string[] = [];
+  let fileTree = NOT_GIT_TREE_NOTE;
+
+  if (inGitRepo) {
+    diff = await diffSince(APPLIED_REF, [".lenses/"], workspaceRoot);
+    codeFiles = filterCodePaths(
+      await changedSince(APPLIED_REF, ["."], workspaceRoot)
+    );
+    fileTree = await buildFileTreeSummary(workspaceRoot);
+  }
+
+  return {
+    text: buildBundle({
+      intent: config.intent,
+      lenses,
+      diff,
+      codeFiles,
+      inGitRepo,
+      fileTree,
+    }),
+    codeDriftCount: codeFiles.length,
+    inGitRepo,
+  };
+}
+
+export async function assembleApplyBundle(
+  configPath: string
+): Promise<ApplyBundle> {
+  const config = await loadConfig(configPath);
+  return assembleApplyBundleFromConfig(configPath, config);
+}
+
 /**
  * `lens apply` — assemble a context bundle for an external coding agent.
  * This is intentionally read-only: no runner execution, lockfile writes,
@@ -239,37 +286,14 @@ export async function runApply(args: ApplyArgs): Promise<ExitCode> {
   }
 
   try {
-    const workspaceRoot = resolve(dirname(configPath), "..");
-    const lenses = await readLensRecords(config, workspaceRoot);
-    const inGitRepo = await isGitRepo(workspaceRoot);
-
-    let diff: string | null = null;
-    let codeFiles: string[] = [];
-    let fileTree = NOT_GIT_TREE_NOTE;
-
-    if (inGitRepo) {
-      diff = await diffSince(APPLIED_REF, [".lenses/"], workspaceRoot);
-      codeFiles = filterCodePaths(
-        await changedSince(APPLIED_REF, ["."], workspaceRoot)
-      );
-      fileTree = await buildFileTreeSummary(workspaceRoot);
-    }
-
-    const bundle = buildBundle({
-      intent: config.intent,
-      lenses,
-      diff,
-      codeFiles,
-      inGitRepo,
-      fileTree,
-    });
+    const bundle = await assembleApplyBundleFromConfig(configPath, config);
 
     if (args.dryRun) {
-      console.log(bundle);
+      console.log(bundle.text);
       return Exit.SUCCESS;
     }
 
-    console.log(`${bundle}\n\n${APPLY_FOOTER}`);
+    console.log(`${bundle.text}\n\n${APPLY_FOOTER}`);
     return Exit.SUCCESS;
   } catch (error) {
     console.error(formatErrorMessage(error));

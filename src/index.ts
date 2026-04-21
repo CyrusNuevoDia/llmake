@@ -3,11 +3,13 @@
 import { parseArgs } from "node:util";
 import { runAdd } from "./cli/add";
 import { runApply } from "./cli/apply";
+import { runDiff } from "./cli/diff";
 import { runInit } from "./cli/init";
 import { runMark } from "./cli/mark";
 import { runPull } from "./cli/pull";
 import { runStatus } from "./cli/status";
 import { runSync } from "./cli/sync";
+import { runValidate } from "./cli/validate";
 import { Exit, type ExitCode } from "./exit";
 
 const VERSION = "0.0.1";
@@ -21,6 +23,8 @@ Usage:
   lens pull [--force] [--dry-run]
   lens add <name> --description <text> [--path <p>] [--dry-run]
   lens apply [--dry-run]
+  lens diff
+  lens validate
   lens mark-synced
   lens mark-applied
   lens --help
@@ -132,6 +136,14 @@ function dispatch(args: ParsedArgs): Promise<ExitCode> {
 
   if (args.verb === "apply") {
     return runApply({ dryRun: args.dryRun, configPath: args.configPath });
+  }
+
+  if (args.verb === "diff") {
+    return runDiff({ configPath: args.configPath });
+  }
+
+  if (args.verb === "validate") {
+    return runValidate({ configPath: args.configPath });
   }
 
   if (args.verb === "status") {
