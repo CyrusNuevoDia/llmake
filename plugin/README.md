@@ -8,7 +8,7 @@ Requires the Lens CLI:
 - `npm i -g lens-engine`
 
 Commands:
-- `/lens:init` — initialize Lens in the current directory.
+- `/lens:init [description]` — initialize Lens in the current directory. With no description, surveys the repo (like Claude's `/init`) to propose a template and draft the intent before calling the CLI.
 - `/lens:sync` — sync lens artifacts from the current workspace state.
 - `/lens:status` — show Lens status for the current directory.
 - `/lens:apply` — open plan mode from `lens apply --dry-run` context.

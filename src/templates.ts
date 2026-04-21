@@ -2,7 +2,28 @@ import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { validateConfig } from "./config";
+import { EMBEDDED_TEMPLATES } from "./embedded-templates";
 import type { LensConfig } from "./types";
+
+/**
+ * Read a template either from disk (when the source tree or installed
+ * package's `templates/` directory is reachable) or from the embedded map
+ * (bun-compiled standalone binary, where nothing sits next to the binary).
+ */
+async function readTemplateRaw(name: string): Promise<string> {
+  const path = templatePath(name);
+  try {
+    return await readFile(path, "utf-8");
+  } catch {
+    const embedded = EMBEDDED_TEMPLATES[name];
+    if (embedded !== undefined) {
+      return embedded;
+    }
+    throw new Error(
+      `lens: template "${name}" not found at ${path} and no embedded fallback. Known templates ship under <pkg>/templates/*.yaml.`
+    );
+  }
+}
 
 /**
  * Marker in shipped template YAMLs that is replaced with the user's actual
@@ -30,16 +51,8 @@ export async function loadTemplate(name: string): Promise<{
   raw: string;
   config: LensConfig;
 }> {
-  const path = templatePath(name);
+  const raw = await readTemplateRaw(name);
   const { parse } = await import("yaml");
-  let raw: string;
-  try {
-    raw = await readFile(path, "utf-8");
-  } catch {
-    throw new Error(
-      `lens: template "${name}" not found at ${path}. Known templates ship under <pkg>/templates/*.yaml.`
-    );
-  }
   const parsed = parse(raw);
   const config = validateConfig(parsed);
   return { raw, config };

@@ -321,4 +321,38 @@ describe("lens pull", () => {
       runGit(["rev-parse", "--verify", "refs/lens/applied"], tempDir).status
     ).not.toBe(0);
   });
+
+  it("refreshes lock.tasks.sync with post-pull lens hashes so status does not report false drift", async () => {
+    const pullScript = await seedPullSourcesRepo(tempDir);
+
+    const result = await runLens(["pull"], {
+      cwd: tempDir,
+      env: { LENS_RUNNER_OVERRIDE: `${pullScript} {prompt}` },
+    });
+    expect(result.exitCode).toBe(0);
+
+    const lock = await readJson(join(tempDir, ".lens/lock.json"));
+    const syncEntry = (lock.tasks as Record<string, unknown>).sync as
+      | Record<string, unknown>
+      | undefined;
+    expect(syncEntry).toBeDefined();
+
+    const syncFiles = syncEntry?.files as Record<string, string>;
+    // Sync entry tracks lens file hashes — confirm they're the post-pull ones.
+    expect(Object.keys(syncFiles).sort()).toEqual([
+      ".lenses/api.md",
+      ".lenses/flows.md",
+      ".lenses/jobs.md",
+      ".lenses/roles.md",
+      ".lenses/schema.md",
+      ".lenses/wireframes.md",
+    ]);
+
+    // The lens files written by the pull runner (api.md and wireframes.md both
+    // say "pulled\n") should hash identically — proving the sync entry was
+    // computed from post-runner state, not pre.
+    expect(syncFiles[".lenses/api.md"]).toBe(
+      syncFiles[".lenses/wireframes.md"]
+    );
+  });
 });

@@ -128,8 +128,9 @@ Most formatting and common issues are automatically fixed by Biome. Run `bun x u
 
 This package is published to npm as `lens-engine` (CLI command: `lens`).
 
-- **Build**: `bun run build` bundles `src/index.ts` into a single `dist/lens.js` with all dependencies inlined.
-- **Build standalone binary**: `bun run build:bin` compiles to `bin/lens` (local use only, not published).
+- **Build**: `bun run build` runs `embed-templates` then bundles `src/index.ts` into a single `dist/lens.js` with all dependencies inlined.
+- **Build standalone binary**: `bun run build:bin` runs `embed-templates` then compiles to `bin/lens` (local use only, not published). The binary resolves templates via the embedded map since `templates/` doesn't sit next to the binary.
+- **Embed templates**: `bun run embed-templates` regenerates `src/embedded-templates.ts` from `templates/*.yaml`. Chained into `build` and `build:bin`; run it standalone after editing a template YAML if you want typecheck/tests to see the change.
 - **Publish**: `npm publish` (runs `prepublishOnly` -> `bun run build` automatically).
 - **Install**: `npm i -g lens-engine` / `bun add -g lens-engine` / `pnpm add -g lens-engine`.
 - **Run without installing**: `npx lens-engine` / `bunx lens-engine` / `pnpx lens-engine`.

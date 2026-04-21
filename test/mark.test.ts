@@ -1,8 +1,33 @@
 import { afterEach, beforeEach, describe, expect, it } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
+
+async function scaffoldLensProject(dir: string): Promise<void> {
+  await mkdir(join(dir, ".lenses"), { recursive: true });
+  await writeFile(
+    join(dir, ".lenses/config.yaml"),
+    `intent: test
+runner: echo {prompt}
+lenses:
+  - name: schema
+    path: .lenses/schema.md
+    description: Schema lens
+  - name: api
+    path: .lenses/api.md
+    description: API lens
+`
+  );
+  await writeFile(join(dir, ".lenses/schema.md"), "schema v1\n");
+  await writeFile(join(dir, ".lenses/api.md"), "api v1\n");
+}
+
+async function readLock(dir: string): Promise<Record<string, unknown>> {
+  return JSON.parse(await readFile(join(dir, ".lens/lock.json"), "utf-8"));
+}
+
+const SHA256_PREFIX = /^sha256:/;
 
 const CLI_PATH = resolve(import.meta.dir, "../src/index.ts");
 
@@ -144,3 +169,66 @@ for (const which of ["synced", "applied"] as const) {
     });
   });
 }
+
+describe("lens mark — lockfile refresh (F6)", () => {
+  it("mark synced writes lock.tasks.sync with current lens file hashes", async () => {
+    gitInit(tempDir);
+    await scaffoldLensProject(tempDir);
+
+    const { exitCode, stdout } = await runLens(["mark", "synced"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("refreshed lock.tasks.sync");
+
+    const lock = await readLock(tempDir);
+    const sync = (lock.tasks as Record<string, unknown>).sync as
+      | Record<string, unknown>
+      | undefined;
+    expect(sync).toBeDefined();
+
+    const files = sync?.files as Record<string, string>;
+    expect(Object.keys(files).sort()).toEqual([
+      ".lenses/api.md",
+      ".lenses/schema.md",
+    ]);
+    expect(files[".lenses/schema.md"]).toMatch(SHA256_PREFIX);
+  });
+
+  it("mark synced still refreshes the lockfile even when the ref is already at HEAD", async () => {
+    gitInit(tempDir);
+    await scaffoldLensProject(tempDir);
+    const head = currentHead(tempDir);
+    expectGitOk(["update-ref", "refs/lens/synced", head], tempDir);
+
+    const { exitCode, stdout, stderr } = await runLens(["mark", "synced"]);
+    expect(exitCode).toBe(0);
+    // Pre-fix this would have failed with "already at HEAD".
+    expect(stderr).toBe("");
+    expect(stdout).toContain("refreshed lock.tasks.sync");
+
+    const lock = await readLock(tempDir);
+    expect((lock.tasks as Record<string, unknown>).sync).toBeDefined();
+  });
+
+  it("mark applied writes lock.tasks.pull with fallback-tracked code file hashes", async () => {
+    gitInit(tempDir);
+    await scaffoldLensProject(tempDir);
+    await writeFile(join(tempDir, "src.ts"), "export const v = 1;\n");
+    expectGitOk(["add", "-A"], tempDir);
+    expectGitOk(["commit", "-q", "-m", "scaffold"], tempDir);
+
+    const { exitCode, stdout } = await runLens(["mark", "applied"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("refreshed lock.tasks.pull");
+
+    const lock = await readLock(tempDir);
+    const pull = (lock.tasks as Record<string, unknown>).pull as
+      | Record<string, unknown>
+      | undefined;
+    expect(pull).toBeDefined();
+
+    const files = pull?.files as Record<string, string>;
+    // Fallback excludes .lenses/ and .lens/; src.ts should be tracked.
+    expect(Object.keys(files)).toContain("src.ts");
+    expect(Object.keys(files)).not.toContain(".lenses/config.yaml");
+  });
+});

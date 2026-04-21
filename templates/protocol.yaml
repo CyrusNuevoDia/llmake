@@ -3,7 +3,7 @@
 
 intent: __LENS_INTENT_PLACEHOLDER__
 
-runner: claude --allowed-tools Read,Write,Edit,Bash --print {prompt}
+runner: claude --allowed-tools Read,Write,Edit,Bash,Grep,Glob --permission-mode acceptEdits --print {prompt}
 
 settings:
   autoApprove: false

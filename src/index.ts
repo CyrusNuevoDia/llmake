@@ -33,7 +33,7 @@ Global flags:
   --config <path>    Use a specific config file (default: .lenses/config.yaml)
   --force            Overwrite existing config (init only)
   --dry-run          Print what would happen without executing
-  --template <name>  Template for init (default: webapp)
+  -t, --template <name>  Template for init (default: webapp)
   --help, -h         Print this help
   --version, -v      Print version
 `;
@@ -59,7 +59,7 @@ function parseCliArgs(): ParsedArgs {
       version: { type: "boolean", short: "v", default: false },
       force: { type: "boolean", short: "f", default: false },
       "dry-run": { type: "boolean", short: "n", default: false },
-      template: { type: "string" },
+      template: { type: "string", short: "t" },
       description: { type: "string" },
       path: { type: "string", short: "p" },
       config: { type: "string", short: "c" },

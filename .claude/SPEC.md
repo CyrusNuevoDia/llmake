@@ -72,7 +72,7 @@ intent: |
   Only admins can send invoices; members can create drafts.
 
 # Runner command for LLM invocation. {prompt} is substituted at execution time.
-runner: claude --allowed-tools Read,Write,Edit,Bash --print {prompt}
+runner: claude --allowed-tools Read,Write,Edit,Bash,Grep,Glob --permission-mode acceptEdits --print {prompt}
 
 # Optional global settings
 settings:
@@ -565,7 +565,7 @@ Each phase is independently demoable.
 
 llmake's model is N tasks → N LLM calls. Lens's model is **1 task → 1 LLM call → LLM updates multiple files via tool use**. This requires the runner to have write access to lens files.
 
-The default runner (`claude --allowed-tools Read,Write,Edit,Bash --print {prompt}`) provides this. The engine does not need to know which files the LLM updated — the lockfile hash comparison on the next run detects all changes.
+The default runner (`claude --allowed-tools Read,Write,Edit,Bash,Grep,Glob --permission-mode acceptEdits --print {prompt}`) provides this. The engine does not need to know which files the LLM updated — the lockfile hash comparison on the next run detects all changes.
 
 If a user supplies a runner that cannot write files (e.g. `llm -m gpt-4o {prompt}` with no tool use), Lens will not work correctly. Document this prominently in the README.
 

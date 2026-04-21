@@ -148,7 +148,7 @@ function isCleanIgnoringLockfile(cwd: string): Promise<boolean> {
   });
 }
 
-async function resolvePullSources(
+export async function resolvePullSources(
   config: LensConfig,
   repoRoot: string
 ): Promise<string[] | null> {
@@ -190,7 +190,7 @@ async function resolvePullSources(
   );
 }
 
-async function hashRelativeFiles(
+export async function hashRelativeFiles(
   repoRoot: string,
   relPaths: string[]
 ): Promise<Record<string, string>> {
@@ -430,16 +430,22 @@ export async function runPull(args: PullArgs): Promise<ExitCode> {
 
   console.log(`lens: pull — runner completed in ${elapsedMs}ms`);
 
-  await hashRelativeFiles(
+  // Pull wrote lens files from the runner's single prompt, so the result is
+  // by construction an internally-consistent baseline. Refresh both tasks:
+  // `pull` tracks code hashes (drift detection), `sync` tracks lens hashes
+  // (so a subsequent `lens sync` doesn't see false drift).
+  const postLensHashes = await hashRelativeFiles(
     repoRoot,
     config.lenses.map((lens) => lens.path)
   );
+  const postLensMerkle = computeMerkleRoot(postLensHashes);
 
   await writeLock(lockPath, {
     ...lock,
     tasks: {
       ...lock.tasks,
       pull: makeLockEntry(fileHashes, merkleRoot),
+      sync: makeLockEntry(postLensHashes, postLensMerkle),
     },
   });
 

@@ -58,24 +58,24 @@ lens --version
 
 Ship with six starter lens sets:
 
-| Template    | Lenses                                                    |
-|-------------|-----------------------------------------------------------|
-| `webapp`    | schema, api, roles, jobs, flows, wireframes               |
-| `cli`       | commands, flags, exit-codes, scenarios, manpage           |
-| `library`   | public-api, types, errors, examples                       |
-| `pipeline`  | inputs, stages, outputs, failure-modes, observability     |
-| `protocol`  | messages, state-machine, wire-format, conformance         |
-| `blank`     | (no lenses — grow with `lens add`)                        |
+| Template   | Lenses                                                |
+| ---------- | ----------------------------------------------------- |
+| `webapp`   | schema, api, roles, jobs, flows, wireframes           |
+| `cli`      | commands, flags, exit-codes, scenarios, manpage       |
+| `library`  | public-api, types, errors, examples                   |
+| `pipeline` | inputs, stages, outputs, failure-modes, observability |
+| `protocol` | messages, state-machine, wire-format, conformance     |
+| `blank`    | (no lenses — grow with `lens add`)                    |
 
 `lens init` defaults to `webapp`. Pass `--template <name>` to pick another.
 
 ### Exit codes
 
-| Code | Meaning                                                |
-|------|--------------------------------------------------------|
-| 0    | Success                                                |
-| 1    | Operation failed (runner error, missing lens, etc.)    |
-| 2    | Config missing or invalid                              |
+| Code | Meaning                                                      |
+| ---- | ------------------------------------------------------------ |
+| 0    | Success                                                      |
+| 1    | Operation failed (runner error, missing lens, etc.)          |
+| 2    | Config missing or invalid                                    |
 | 3    | Git state incompatible (e.g. `lens mark ...` outside a repo) |
 
 ## Config (`.lenses/config.yaml`)
@@ -84,7 +84,7 @@ Ship with six starter lens sets:
 intent: |
   A team invoicing app. Teams have admins and members. …
 
-runner: claude --allowed-tools Read,Write,Edit,Bash --print {prompt}
+runner: claude --allowed-tools Read,Write,Edit,Bash,Grep,Glob --permission-mode acceptEdits --print {prompt}
 
 settings:
   autoApprove: false
@@ -97,7 +97,7 @@ lenses:
     pullSources:
       - prisma/**/*.prisma
       - src/db/**/*.ts
-    affects: [api, roles]     # optional: prune sync context
+    affects: [api, roles] # optional: prune sync context
 
   - name: api
     path: .lenses/api.md
@@ -119,7 +119,9 @@ Optional `string[]` of lens names this lens can influence. When any lens declare
 
 ## Runner contract
 
-The runner must be a shell command containing `{prompt}`. Lens substitutes a shell-escaped prompt in place of `{prompt}` and invokes via a login shell so your `$PATH` is loaded. The runner is expected to write files via tool use (Claude's Read/Write/Edit tools) — Lens detects changes by re-hashing lens files on the next run, not by parsing runner output.
+The runner must be a shell command containing `{prompt}`. Lens substitutes a shell-escaped prompt in place of `{prompt}` and invokes via a login shell so your `$PATH` is loaded. The runner is expected to write files via tool use (Claude's Read/Write/Edit tools, plus Grep/Glob for large-codebase `pull`) — Lens detects changes by re-hashing lens files on the next run, not by parsing runner output.
+
+When using `claude` as the runner, pass `--permission-mode acceptEdits` so the headless session commits to edits instead of entering plan mode. The shipped templates do this by default.
 
 ### Runner override
 
@@ -134,10 +136,10 @@ Tracks hashes of lens files (and pull-source files) across tasks (`generate`, `s
 `plugin/` ships a Claude Code plugin:
 
 ```
-/lens:init <description>
+/lens:init [description]  # no arg → surveys repo, drafts intent, like /init
 /lens:sync
 /lens:status
-/lens:apply             # enters plan mode with the apply bundle
+/lens:apply               # enters plan mode with the apply bundle
 /lens:pull
 /lens:add <name> --description "..."
 /lens:mark <synced|applied>
@@ -154,18 +156,6 @@ bun x ultracite check           # Biome lint via Ultracite preset
 bun test                        # integration tests
 bun run build                   # produces dist/lens.js
 ```
-
-## Phased roadmap
-
-All five spec phases are implemented:
-
-- **Phase 1** — fork + `lens init` (webapp/blank templates).
-- **Phase 2** — `sync`, `status`, `mark <synced|applied>`, git-ref layer, all 6 templates.
-- **Phase 3** — `apply` + Claude Code plugin with plan-mode handoff.
-- **Phase 4** — `pull` + `add` + `pullSources` schema.
-- **Phase 5** — `diff`, `validate`, structured conflict surfacing in sync, optional `affects:` graph.
-
-See `.claude/SPEC.md` for the complete design document.
 
 ## License
 

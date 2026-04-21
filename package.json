@@ -30,8 +30,9 @@
   ],
   "scripts": {
     "dev": "bun run src/index.ts",
-    "build": "bun build src/index.ts --outfile dist/lens.js --target node --minify",
-    "build:bin": "bun build src/index.ts --compile --outfile bin/lens",
+    "embed-templates": "bun scripts/embed-templates.ts",
+    "build": "bun run embed-templates && bun build src/index.ts --outfile dist/lens.js --target node --minify",
+    "build:bin": "bun run embed-templates && bun build src/index.ts --compile --outfile bin/lens",
     "test": "bun test",
     "typecheck": "tsc --noEmit",
     "check": "ultracite check",

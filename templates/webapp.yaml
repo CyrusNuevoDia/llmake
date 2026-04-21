@@ -5,7 +5,7 @@
 intent: __LENS_INTENT_PLACEHOLDER__
 
 # Runner command for LLM invocation. {prompt} is substituted at execution time.
-runner: claude --allowed-tools Read,Write,Edit,Bash --print {prompt}
+runner: claude --allowed-tools Read,Write,Edit,Bash,Grep,Glob --permission-mode acceptEdits --print {prompt}
 
 settings:
   autoApprove: false

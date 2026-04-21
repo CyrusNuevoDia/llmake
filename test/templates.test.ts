@@ -74,6 +74,17 @@ describe("shipped templates", () => {
     }
   });
 
+  it("has an embedded fallback for every shipped template (F1 — compiled binary)", async () => {
+    const { EMBEDDED_TEMPLATES } = await import("../src/embedded-templates");
+    const templateNames = Object.keys(expectedLenses).sort();
+    expect(Object.keys(EMBEDDED_TEMPLATES).sort()).toEqual(templateNames);
+
+    for (const name of templateNames) {
+      expect(EMBEDDED_TEMPLATES[name]).toContain("__LENS_INTENT_PLACEHOLDER__");
+      expect(EMBEDDED_TEMPLATES[name]).toContain("runner:");
+    }
+  });
+
   it("initializes successfully with the blank template", async () => {
     const { exitCode, stderr } = await runLens([
       "init",

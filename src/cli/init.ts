@@ -81,6 +81,32 @@ async function snapshotLensFiles(
 }
 
 /**
+ * Warn (non-fatal) if the generate runner exited 0 but didn't modify any
+ * lens file — a common symptom of Claude entering plan mode instead of
+ * applying edits. We don't fail because a user's custom runner may have
+ * legitimate no-op behavior.
+ */
+async function warnIfRunnerNoOp(
+  configDir: string,
+  lenses: { path: string }[],
+  preSnapshots: FileSnapshot[]
+): Promise<void> {
+  const postSnapshots = await snapshotLensFiles(
+    configDir,
+    lenses.map((l) => l.path)
+  );
+  const preByPath = new Map(preSnapshots.map((s) => [s.path, s.content]));
+  const anyLensChanged = postSnapshots.some(
+    (s) => s.content !== preByPath.get(s.path)
+  );
+  if (!anyLensChanged) {
+    console.warn(
+      "lens: warning — runner exited 0 but no lens files were modified. If using Claude, add `--permission-mode acceptEdits` so it doesn't enter plan mode."
+    );
+  }
+}
+
+/**
  * `lens init` — scaffold a new Lens setup, run the generate prompt to
  * populate lens files from the intent + template, write the lockfile, and
  * advance `refs/lens/synced` if the working tree is in a git repo.
@@ -157,6 +183,8 @@ export async function runInit(args: InitArgs): Promise<ExitCode> {
       console.error(`lens: generate runner failed (exit ${result.exitCode})`);
       return Exit.FAIL;
     }
+
+    await warnIfRunnerNoOp(configDir, config.lenses, snapshots);
   }
 
   const populated = await snapshotLensFiles(
