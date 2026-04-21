@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { parseArgs } from "node:util";
+import { runApply } from "./cli/apply";
 import { runInit } from "./cli/init";
 import { runMark } from "./cli/mark";
 import { runStatus } from "./cli/status";
@@ -15,6 +16,7 @@ Usage:
   lens init [description] [--template <name>]
   lens status
   lens sync [--force] [--dry-run]
+  lens apply [--dry-run]
   lens mark-synced
   lens mark-applied
   lens --help
@@ -98,6 +100,10 @@ function dispatch(args: ParsedArgs): Promise<ExitCode> {
       dryRun: args.dryRun,
       configPath: args.configPath,
     });
+  }
+
+  if (args.verb === "apply") {
+    return runApply({ dryRun: args.dryRun, configPath: args.configPath });
   }
 
   if (args.verb === "status") {

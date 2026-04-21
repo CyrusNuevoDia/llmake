@@ -1,0 +1,8 @@
+{
+  "name": "lens",
+  "description": "Multi-representation programming: prose intent artifacts kept in sync with code",
+  "version": "0.0.1",
+  "author": { "name": "Zenbase AI" },
+  "homepage": "https://github.com/CyrusNuevoDia/lens",
+  "keywords": ["lens", "sync", "prose", "spec"]
+}
