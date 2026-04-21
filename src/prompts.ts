@@ -59,6 +59,20 @@ Rules:
   Instead, leave the third lens unchanged and print a clearly-labeled
   conflict report explaining the contradiction.
 - Use Edit (preferred) or Write tools to update files.
+
+When you detect a conflict you cannot resolve, emit exactly this XML block
+somewhere in your response:
+
+<lens-conflict lens="<name>">
+<what>one-line description of the conflict</what>
+<changes>
+- first change pulling the lens in direction A
+- second change pulling it in direction B
+</changes>
+</lens-conflict>
+
+Emit one block per unresolved conflict. Emit nothing if there are no
+conflicts.
 `;
 
 /**

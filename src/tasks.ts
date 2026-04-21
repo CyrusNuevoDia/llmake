@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { computeMerkleRoot, hashFile } from "./hash";
 import { diffTask } from "./lock";
 import type { FileSnapshot } from "./prompts";
-import type { LensConfig, LensLock, TaskDiff } from "./types";
+import type { LensConfig, LensDef, LensLock, TaskDiff } from "./types";
 
 export interface SyncTaskContext {
   lockTaskName: "sync";
@@ -13,6 +13,7 @@ export interface SyncTaskContext {
   merkleRoot: string;
   diff: TaskDiff;
   snapshots: FileSnapshot[];
+  lensesForPrompt: LensDef[];
 }
 
 async function readLensFile(path: string): Promise<string> {
@@ -21,6 +22,56 @@ async function readLensFile(path: string): Promise<string> {
   } catch {
     return "";
   }
+}
+
+function hasAffectsGraph(lenses: LensDef[]): boolean {
+  return lenses.some(
+    (lens) => Array.isArray(lens.affects) && lens.affects.length > 0
+  );
+}
+
+export function pruneLensesForSync(
+  lenses: LensDef[],
+  changedPaths: string[]
+): LensDef[] {
+  if (!hasAffectsGraph(lenses)) {
+    return lenses;
+  }
+
+  const lensByName = new Map<string, LensDef>();
+  const nameByPath = new Map<string, string>();
+
+  for (const lens of lenses) {
+    lensByName.set(lens.name, lens);
+    nameByPath.set(lens.path, lens.name);
+  }
+
+  const reachable = new Set<string>();
+  const pending = changedPaths
+    .map((path) => nameByPath.get(path))
+    .filter((name): name is string => name !== undefined);
+
+  while (pending.length > 0) {
+    const name = pending.pop();
+    if (name === undefined || reachable.has(name)) {
+      continue;
+    }
+
+    reachable.add(name);
+
+    const lens = lensByName.get(name);
+    if (!lens) {
+      continue;
+    }
+
+    for (const affectedName of lens.affects ?? []) {
+      if (!reachable.has(affectedName) && lensByName.has(affectedName)) {
+        pending.push(affectedName);
+      }
+    }
+  }
+
+  return lenses.filter((lens) => reachable.has(lens.name));
 }
 
 export async function assembleSyncContext(
@@ -46,6 +97,7 @@ export async function assembleSyncContext(
 
   const merkleRoot = computeMerkleRoot(fileHashes);
   const diff = diffTask("sync", fileHashes, merkleRoot, lock.tasks.sync);
+  const lensesForPrompt = pruneLensesForSync(config.lenses, diff.changed_files);
 
   return {
     lockTaskName: "sync",
@@ -55,5 +107,6 @@ export async function assembleSyncContext(
     merkleRoot,
     diff,
     snapshots,
+    lensesForPrompt,
   };
 }

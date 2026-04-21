@@ -36,6 +36,12 @@ export interface LensDef {
    * all git-tracked files outside `.lenses/` and `.lens/`.
    */
   pullSources?: string[];
+  /**
+   * Names of other lenses this lens can influence. Sync prunes the `{lenses}`
+   * context to (changed union reachable-via-affects) when any lens declares
+   * `affects`. Leave unset for full-context syncs.
+   */
+  affects?: string[];
 }
 
 /**

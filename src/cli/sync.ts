@@ -11,10 +11,10 @@ import {
   updateRef,
 } from "../git";
 import { readLock, writeLock } from "../lock";
-import { assemblePrompt, SYNC_PROMPT } from "../prompts";
+import { assemblePrompt, type FileSnapshot, SYNC_PROMPT } from "../prompts";
 import { executeRunner } from "../runner";
 import { assembleSyncContext } from "../tasks";
-import type { LensConfig, LensLock, TaskLockEntry } from "../types";
+import type { LensConfig, LensDef, LensLock, TaskLockEntry } from "../types";
 
 export interface SyncArgs {
   force: boolean;
@@ -96,6 +96,126 @@ function makeLockEntry(
   };
 }
 
+interface LensConflict {
+  lens: string;
+  what: string;
+  changes: string[];
+}
+
+function filterSnapshotsForLenses(
+  snapshots: FileSnapshot[],
+  lenses: LensDef[]
+): FileSnapshot[] {
+  const lensPaths = new Set(lenses.map((lens) => lens.path));
+  return snapshots.filter((snapshot) => lensPaths.has(snapshot.path));
+}
+
+function extractLensConflictField(block: string, field: string): string | null {
+  const openTag = `<${field}>`;
+  const start = block.indexOf(openTag);
+  if (start === -1) {
+    return null;
+  }
+
+  const contentStart = start + openTag.length;
+  const end = block.indexOf(`</${field}>`, contentStart);
+  if (end === -1) {
+    return null;
+  }
+
+  return block.slice(contentStart, end).trim();
+}
+
+function extractLensConflictName(block: string): string | null {
+  const startTagEnd = block.indexOf(">");
+  if (startTagEnd === -1) {
+    return null;
+  }
+
+  const startTag = block.slice(0, startTagEnd);
+  const attr = 'lens="';
+  const attrStart = startTag.indexOf(attr);
+  if (attrStart === -1) {
+    return null;
+  }
+
+  const valueStart = attrStart + attr.length;
+  const valueEnd = startTag.indexOf('"', valueStart);
+  if (valueEnd === -1) {
+    return null;
+  }
+
+  return startTag.slice(valueStart, valueEnd).trim();
+}
+
+function parseLensConflictChanges(changesBlock: string): string[] {
+  return changesBlock
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "")
+    .map((line) => {
+      if (line.startsWith("- ")) {
+        return line.slice(2).trim();
+      }
+      return line;
+    });
+}
+
+function parseLensConflicts(output: string): LensConflict[] {
+  const conflicts: LensConflict[] = [];
+  const openTag = "<lens-conflict ";
+  const closeTag = "</lens-conflict>";
+  let searchIndex = 0;
+
+  while (searchIndex < output.length) {
+    const blockStart = output.indexOf(openTag, searchIndex);
+    if (blockStart === -1) {
+      break;
+    }
+
+    const blockEnd = output.indexOf(closeTag, blockStart);
+    if (blockEnd === -1) {
+      break;
+    }
+
+    const block = output.slice(blockStart, blockEnd + closeTag.length);
+    const lens = extractLensConflictName(block);
+    const what = extractLensConflictField(block, "what");
+    const changesBlock = extractLensConflictField(block, "changes");
+
+    if (lens && what && changesBlock) {
+      conflicts.push({
+        lens,
+        what,
+        changes: parseLensConflictChanges(changesBlock),
+      });
+    }
+
+    searchIndex = blockEnd + closeTag.length;
+  }
+
+  return conflicts;
+}
+
+function formatLensConflictReport(conflicts: LensConflict[]): string {
+  const sections = conflicts.map((conflict) =>
+    [
+      `  ⚠ ${conflict.lens}`,
+      `    ${conflict.what}`,
+      "    changes:",
+      ...conflict.changes.map((change) => `      • ${change}`),
+    ].join("\n")
+  );
+
+  return [
+    `lens: sync detected ${conflicts.length} conflict(s):`,
+    "",
+    sections.join("\n\n"),
+    "",
+    "Resolve them manually and re-run `lens sync`.",
+  ].join("\n");
+}
+
 /**
  * `lens sync` — reconcile lens files with each other, invoke the configured
  * runner with the sync prompt, and record the resulting file hashes.
@@ -145,11 +265,18 @@ export async function runSync(args: SyncArgs): Promise<ExitCode> {
   }
 
   const gitDiff = await diffSince("refs/lens/synced", ctx.relSources, repoRoot);
+  const promptSnapshots = filterSnapshotsForLenses(
+    ctx.snapshots,
+    ctx.lensesForPrompt
+  );
+  const promptLensPaths = new Set(ctx.lensesForPrompt.map((lens) => lens.path));
   const prompt = assemblePrompt(SYNC_PROMPT, {
     intent: config.intent,
-    lenses: config.lenses,
-    changed_files: ctx.diff.changed_files,
-    changed_files_content: ctx.snapshots,
+    lenses: ctx.lensesForPrompt,
+    changed_files: ctx.diff.changed_files.filter((path) =>
+      promptLensPaths.has(path)
+    ),
+    changed_files_content: promptSnapshots,
     git_diff_since: gitDiff == null ? undefined : { "lens/synced": gitDiff },
   });
 
@@ -162,7 +289,9 @@ export async function runSync(args: SyncArgs): Promise<ExitCode> {
   console.log(
     `lens: sync — running prompt via runner (${ctx.diff.changed_files.length} changed files)`
   );
-  const result = await executeRunner(config.runner, prompt);
+  const result = await executeRunner(config.runner, prompt, {
+    capture: true,
+  });
   const elapsedMs = Date.now() - startedAt;
 
   if (result.exitCode !== 0) {
@@ -173,6 +302,10 @@ export async function runSync(args: SyncArgs): Promise<ExitCode> {
   }
 
   console.log(`lens: sync — runner completed in ${elapsedMs}ms`);
+  const conflicts = parseLensConflicts(result.stdout);
+  if (conflicts.length > 0) {
+    console.log(formatLensConflictReport(conflicts));
+  }
 
   const updatedCtx = await assembleSyncContext(config, configDir, lock);
   await writeLock(lockPath, {
