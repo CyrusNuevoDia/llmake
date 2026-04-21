@@ -73,20 +73,23 @@ lenses:
 }
 
 describe("lens sync conflict surfacing", () => {
-  it("prints a structured conflict summary when the runner emits conflict XML", async () => {
+  it("surfaces .lens/conflicts.md when the runner writes one", async () => {
     await writeConflictProject(tempDir);
+    await mkdir(join(tempDir, ".lens"), { recursive: true });
 
     const runnerPath = join(tempDir, "conflict-runner.sh");
     await writeRunnerScript(
       runnerPath,
-      `cat <<'EOF'
-<lens-conflict lens="schema">
-<what>schema cannot satisfy both incoming edits</what>
-<changes>
+      `mkdir -p .lens
+cat > .lens/conflicts.md <<'EOF'
+# Sync conflicts
+
+## schema
+schema cannot satisfy both incoming edits
+
+Changes:
 - api now expects normalized relational tables
 - roles now assumes embedded document payloads
-</changes>
-</lens-conflict>
 EOF`
     );
 
@@ -98,12 +101,46 @@ EOF`
     expect(exitCode).toBe(0);
     expect(stderr).toBe("");
     expect(stdout).toContain("lens: sync — runner completed");
-    expect(stdout).toContain("lens: sync detected 1 conflict(s):");
-    expect(stdout).toContain("⚠ schema");
+    expect(stdout).toContain(
+      "lens: sync recorded unresolved conflicts in .lens/conflicts.md:"
+    );
+    expect(stdout).toContain("# Sync conflicts");
+    expect(stdout).toContain("## schema");
     expect(stdout).toContain("schema cannot satisfy both incoming edits");
-    expect(stdout).toContain("changes:");
-    expect(stdout).toContain("• api now expects normalized relational tables");
-    expect(stdout).toContain("• roles now assumes embedded document payloads");
-    expect(stdout).toContain("Resolve them manually and re-run `lens sync`.");
+    expect(stdout).toContain("- api now expects normalized relational tables");
+    expect(stdout).toContain("Resolve them manually and re-run `lens sync`");
+  });
+
+  it("does not mention conflicts when the runner writes no file", async () => {
+    await writeConflictProject(tempDir);
+
+    const runnerPath = join(tempDir, "clean-runner.sh");
+    await writeRunnerScript(runnerPath, "true");
+
+    const { exitCode, stdout } = await runLens(["sync"], {
+      cwd: tempDir,
+      env: { LENS_RUNNER_OVERRIDE: `${runnerPath} {prompt}` },
+    });
+
+    expect(exitCode).toBe(0);
+    expect(stdout).not.toContain("unresolved conflicts");
+  });
+
+  it("clears a stale .lens/conflicts.md when the current run has none", async () => {
+    await writeConflictProject(tempDir);
+    await mkdir(join(tempDir, ".lens"), { recursive: true });
+    await writeFile(join(tempDir, ".lens/conflicts.md"), "# Stale\n");
+
+    const runnerPath = join(tempDir, "clean-runner.sh");
+    await writeRunnerScript(runnerPath, "true");
+
+    const { exitCode } = await runLens(["sync"], {
+      cwd: tempDir,
+      env: { LENS_RUNNER_OVERRIDE: `${runnerPath} {prompt}` },
+    });
+
+    expect(exitCode).toBe(0);
+    const leftover = Bun.file(join(tempDir, ".lens/conflicts.md"));
+    expect(await leftover.exists()).toBe(false);
   });
 });

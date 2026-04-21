@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { access } from "node:fs/promises";
+import { access, readFile, rm } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { discoverConfig, loadConfig } from "../config";
 import { Exit, type ExitCode } from "../exit";
@@ -23,6 +23,7 @@ export interface SyncArgs {
 }
 
 const LOCK_REL = ".lens/lock.json";
+const CONFLICTS_REL = ".lens/conflicts.md";
 
 function formatErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -96,12 +97,6 @@ function makeLockEntry(
   };
 }
 
-interface LensConflict {
-  lens: string;
-  what: string;
-  changes: string[];
-}
-
 function filterSnapshotsForLenses(
   snapshots: FileSnapshot[],
   lenses: LensDef[]
@@ -110,115 +105,15 @@ function filterSnapshotsForLenses(
   return snapshots.filter((snapshot) => lensPaths.has(snapshot.path));
 }
 
-function extractLensConflictField(block: string, field: string): string | null {
-  const openTag = `<${field}>`;
-  const start = block.indexOf(openTag);
-  if (start === -1) {
-    return null;
-  }
-
-  const contentStart = start + openTag.length;
-  const end = block.indexOf(`</${field}>`, contentStart);
-  if (end === -1) {
-    return null;
-  }
-
-  return block.slice(contentStart, end).trim();
-}
-
-function extractLensConflictName(block: string): string | null {
-  const startTagEnd = block.indexOf(">");
-  if (startTagEnd === -1) {
-    return null;
-  }
-
-  const startTag = block.slice(0, startTagEnd);
-  const attr = 'lens="';
-  const attrStart = startTag.indexOf(attr);
-  if (attrStart === -1) {
-    return null;
-  }
-
-  const valueStart = attrStart + attr.length;
-  const valueEnd = startTag.indexOf('"', valueStart);
-  if (valueEnd === -1) {
-    return null;
-  }
-
-  return startTag.slice(valueStart, valueEnd).trim();
-}
-
-function parseLensConflictChanges(changesBlock: string): string[] {
-  return changesBlock
-    .split("\n")
-    .map((line) => line.trim())
-    .filter((line) => line !== "")
-    .map((line) => {
-      if (line.startsWith("- ")) {
-        return line.slice(2).trim();
-      }
-      return line;
-    });
-}
-
-function parseLensConflicts(output: string): LensConflict[] {
-  const conflicts: LensConflict[] = [];
-  const openTag = "<lens-conflict ";
-  const closeTag = "</lens-conflict>";
-  let searchIndex = 0;
-
-  while (searchIndex < output.length) {
-    const blockStart = output.indexOf(openTag, searchIndex);
-    if (blockStart === -1) {
-      break;
-    }
-
-    const blockEnd = output.indexOf(closeTag, blockStart);
-    if (blockEnd === -1) {
-      break;
-    }
-
-    const block = output.slice(blockStart, blockEnd + closeTag.length);
-    const lens = extractLensConflictName(block);
-    const what = extractLensConflictField(block, "what");
-    const changesBlock = extractLensConflictField(block, "changes");
-
-    if (lens && what && changesBlock) {
-      conflicts.push({
-        lens,
-        what,
-        changes: parseLensConflictChanges(changesBlock),
-      });
-    }
-
-    searchIndex = blockEnd + closeTag.length;
-  }
-
-  return conflicts;
-}
-
-function formatLensConflictReport(conflicts: LensConflict[]): string {
-  const sections = conflicts.map((conflict) =>
-    [
-      `  ⚠ ${conflict.lens}`,
-      `    ${conflict.what}`,
-      "    changes:",
-      ...conflict.changes.map((change) => `      • ${change}`),
-    ].join("\n")
-  );
-
-  return [
-    `lens: sync detected ${conflicts.length} conflict(s):`,
-    "",
-    sections.join("\n\n"),
-    "",
-    "Resolve them manually and re-run `lens sync`.",
-  ].join("\n");
-}
-
 /**
  * `lens sync` — reconcile lens files with each other, invoke the configured
  * runner with the sync prompt, and record the resulting file hashes.
+ *
+ * Unresolved conflicts travel as a side-channel file: the sync prompt
+ * instructs the runner to write `.lens/conflicts.md` when it can't
+ * resolve contradictory edits. After the runner exits, `lens sync`
+ * surfaces that file if present — no stdout parsing required, so the
+ * mechanism is runner-agnostic.
  */
 export async function runSync(args: SyncArgs): Promise<ExitCode> {
   const configPath = args.configPath
@@ -285,13 +180,16 @@ export async function runSync(args: SyncArgs): Promise<ExitCode> {
     return Exit.SUCCESS;
   }
 
+  // Clear any stale conflicts file from a prior sync so absence after this
+  // run is a clean "no conflicts" signal.
+  const conflictsPath = resolve(repoRoot, CONFLICTS_REL);
+  await rm(conflictsPath, { force: true });
+
   const startedAt = Date.now();
   console.log(
     `lens: sync — running prompt via runner (${ctx.diff.changed_files.length} changed files)`
   );
-  const result = await executeRunner(config.runner, prompt, {
-    capture: true,
-  });
+  const result = await executeRunner(config.runner, prompt);
   const elapsedMs = Date.now() - startedAt;
 
   if (result.exitCode !== 0) {
@@ -302,9 +200,16 @@ export async function runSync(args: SyncArgs): Promise<ExitCode> {
   }
 
   console.log(`lens: sync — runner completed in ${elapsedMs}ms`);
-  const conflicts = parseLensConflicts(result.stdout);
-  if (conflicts.length > 0) {
-    console.log(formatLensConflictReport(conflicts));
+
+  if (await fileExists(conflictsPath)) {
+    const body = await readFile(conflictsPath, "utf-8");
+    console.log(
+      `\nlens: sync recorded unresolved conflicts in ${CONFLICTS_REL}:\n`
+    );
+    console.log(body.trim());
+    console.log(
+      `\nResolve them manually and re-run \`lens sync\`. (Remove ${CONFLICTS_REL} when done.)`
+    );
   }
 
   const updatedCtx = await assembleSyncContext(config, configDir, lock);

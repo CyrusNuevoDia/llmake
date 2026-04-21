@@ -56,23 +56,30 @@ Rules:
 - Making no changes to a lens that is already consistent is correct and
   expected. Do not rewrite files that don't need updates.
 - If two changes imply contradictory updates to a third lens, do not guess.
-  Instead, leave the third lens unchanged and print a clearly-labeled
-  conflict report explaining the contradiction.
+  Instead, leave the third lens unchanged and record the conflict in
+  \`.lens/conflicts.md\` (see below).
 - Use Edit (preferred) or Write tools to update files.
 
-When you detect a conflict you cannot resolve, emit exactly this XML block
-somewhere in your response:
+Conflict reporting:
+If you detect any conflict you cannot resolve, write a markdown file at
+\`.lens/conflicts.md\` using the Write tool. Use this structure:
 
-<lens-conflict lens="<name>">
-<what>one-line description of the conflict</what>
-<changes>
+\`\`\`markdown
+# Sync conflicts
+
+## <lens-name>
+<one-line description of the contradiction>
+
+Changes:
 - first change pulling the lens in direction A
 - second change pulling it in direction B
-</changes>
-</lens-conflict>
 
-Emit one block per unresolved conflict. Emit nothing if there are no
-conflicts.
+## <next-lens-name>
+...
+\`\`\`
+
+Emit one \`##\` section per conflicted lens. Do NOT create the file if there
+are no conflicts. Lens will surface this file to the user after you exit.
 `;
 
 /**

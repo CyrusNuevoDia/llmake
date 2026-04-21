@@ -9,25 +9,24 @@ import { Shescape } from "shescape";
  */
 export const RUNNER_OVERRIDE_ENV = "LENS_RUNNER_OVERRIDE";
 
-export interface ExecuteRunnerOptions {
-  capture?: boolean;
-}
-
 /**
  * Execute a runner template as a login shell command.
  * Uses -l -i flags to ensure user's PATH is loaded from .zshrc/.bashrc.
  *
  * Honors `$LENS_RUNNER_OVERRIDE` when set (must contain `{prompt}`).
+ *
+ * Lens is runner-agnostic: we stream the runner's stdout/stderr straight
+ * to the user and don't parse any of its output. Any cross-invocation
+ * signals (e.g. `.lens/conflicts.md` from the sync prompt) travel via the
+ * filesystem, not via this function's return value.
  */
 export function executeRunner(
   runnerTemplate: string,
-  prompt: string,
-  options: ExecuteRunnerOptions = {}
-): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  prompt: string
+): Promise<{ exitCode: number }> {
   const override = process.env[RUNNER_OVERRIDE_ENV];
   const usingOverride = Boolean(override?.includes("{prompt}"));
   const effective = usingOverride ? (override as string) : runnerTemplate;
-  const capture = options.capture === true;
 
   // When using the override, run under a non-login `/bin/bash` — overrides
   // are for tests/ops and should not depend on the user's interactive shell
@@ -40,37 +39,17 @@ export function executeRunner(
   const command = effective.replace("{prompt}", quoted);
 
   return new Promise((resolve) => {
-    const stdoutChunks: Buffer[] = [];
-    const stderrChunks: Buffer[] = [];
     const proc = spawn(shell, [...shellArgs, command], {
       cwd: process.cwd(),
-      stdio: capture ? ["ignore", "pipe", "pipe"] : "inherit",
+      stdio: "inherit",
       env: {
         ...process.env,
         FORCE_COLOR: "1",
       },
     });
 
-    if (capture) {
-      proc.stdout?.on("data", (chunk: Buffer | string) => {
-        const output = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-        stdoutChunks.push(output);
-        process.stdout.write(output);
-      });
-
-      proc.stderr?.on("data", (chunk: Buffer | string) => {
-        const output = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
-        stderrChunks.push(output);
-        process.stderr.write(output);
-      });
-    }
-
     proc.on("close", (code) => {
-      resolve({
-        exitCode: code ?? 1,
-        stdout: capture ? Buffer.concat(stdoutChunks).toString("utf-8") : "",
-        stderr: capture ? Buffer.concat(stderrChunks).toString("utf-8") : "",
-      });
+      resolve({ exitCode: code ?? 1 });
     });
   });
 }
