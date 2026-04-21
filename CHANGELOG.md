@@ -1,47 +1,41 @@
 # Changelog
 
-## 0.0.1 — Initial release (forked from llmake)
+## 0.1.0 — Initial public release (2026-04-21)
 
-Complete fork of `llmake` into `lens-engine`, delivering all five phases of `.claude/SPEC.md`.
+First public release of `lens-engine`. Ships a CLI (`lens`) and Claude Code plugin for keeping prose "lens" artifacts in sync with each other and with the code.
 
-### Phase 1 — scaffold + `lens init`
-- Renamed package to `lens-engine`; CLI binary `lens`.
-- New config format: `.lenses/config.yaml` (jsonc/json fallbacks).
-- Config schema: `intent`, `runner`, optional `settings`, `lenses[]`.
-- Lockfile relocated to `.lens/lock.json`.
-- Prompt-template engine with `{intent}` / `{lenses}` / `{changed_files}` / `{changed_files_content}` / `{git_diff_since:<ref>}` substitution.
-- Shipped templates: `webapp` (default), `blank`.
-- Shared exit codes module (`src/exit.ts`): 0/1/2/3 per SPEC §11.5.
-- `LENS_RUNNER_OVERRIDE` env var for tests and ops.
-- `lens init` scaffolds `.lenses/`, runs the generate prompt, writes lockfile, and (in a git repo) advances `refs/lens/synced`.
+### CLI verbs
 
-### Phase 2 — `sync`, `status`, `mark-*`, git refs
-- `src/git.ts` Promise-based wrappers: `isGitRepo`, `isWorkingTreeClean`, `getHead`, `refExists`, `readRef`, `updateRef`, `diffSince`, `changedSince`, `repoRoot`, `commitRelativeTime`.
-- `lens sync` — propagate edits across the lens set. Advances `refs/lens/synced` on clean trees; instructs `lens mark synced` when dirty.
-- `lens status` — formatted drift report (refs + lens set + code drift + suggestions).
-- `lens mark <synced|applied>` — advance either ref to HEAD.
-- Four additional templates: `cli`, `library`, `pipeline`, `protocol`.
-- Every verb works both inside and outside a git repo (except `mark-*`, which requires git).
+- `lens init [description] [--template <name>]` — scaffold `.lenses/` from one of six starter templates and generate initial lens content via your configured runner.
+- `lens sync` — propagate edits across the lens set. Emits structured `<lens-conflict>` blocks when propagation is ambiguous.
+- `lens pull` — reflect code changes back into the lenses. Per-lens `pullSources` globs; falls back to git-tracked files.
+- `lens apply` / `lens diff` — assemble a context bundle (intent + lenses + code diff) for a downstream coding agent. The plugin wires this into Claude Code plan mode.
+- `lens add <name> --description "..."` — append a lens to the config (YAML-formatting-preserving) and generate its initial content.
+- `lens status` — drift report against `refs/lens/synced` and `refs/lens/applied`.
+- `lens validate` — sanity-check the config.
+- `lens mark <synced|applied>` — advance either git ref to `HEAD`.
 
-### Phase 3 — `apply` + Claude Code plugin
-- `lens apply` — assembles a context bundle (intent + lenses + `git diff refs/lens/applied` + file tree) for downstream coding agents. Does not invoke the runner; this is a user-in-the-loop handoff.
-- Claude Code plugin at `plugin/`: skills for every verb, `/lens:apply` drives plan mode via `EnterPlanMode`, post-plan `git`-state check then `lens mark applied`.
+### State model
 
-### Phase 4 — `pull` + `add`
-- `LensDef.pullSources?: string[]` — globs identifying code files each lens tracks.
-- `lens pull` — reflect code changes back into lenses. Unions per-lens pullSources (or falls back to git-tracked files).
-- `lens add <name>` — append a lens to the config in a YAML-formatting-preserving way (via `yaml.parseDocument` + `doc.toString()`), create the lens file, run generate for the new lens.
-- webapp template ships reasonable `pullSources` defaults.
+- Two git refs — `refs/lens/synced` (horizontal lens ↔ lens consistency) and `refs/lens/applied` (vertical lens ↔ code consistency) — advance automatically on clean trees. On dirty trees the verb prints commit-then-`lens mark` guidance.
+- Lockfile at `.lens/lock.json` — content-addressed hashes per task (`generate`, `sync`, `pull`). Commit it.
 
-### Phase 5 — polish
-- `lens diff` — preview the apply bundle with a drift-summary header; read-only.
-- `lens validate` — sanity-check config (schema, `{prompt}`, lens-file existence, duplicate names/paths, pullSources match).
-- Structured conflict surfacing in `lens sync`: the sync prompt instructs the model to emit `<lens-conflict>` XML blocks, and the CLI parses + surfaces them in a dedicated section. Conflict presence does NOT fail sync — user resolves manually.
-- `LensDef.affects?: string[]` — optional graph; when declared, sync's prompt context is pruned to (changed lenses ∪ transitive affects closure).
-- Runner tee-capture: `executeRunner(..., { capture: true })` streams output to the terminal AND buffers it for the caller.
+### Runner contract
 
-### Infrastructure
-- 78 integration tests across 15 files.
-- Biome/Ultracite-clean.
-- Bun bundler produces a single `dist/lens.js` (0.5 MB) with `#!/usr/bin/env node` shebang.
-- Pure Node.js runtime APIs — no Bun-specific surfaces in source.
+- Config field `runner:` is a shell command containing `{prompt}`. Lens substitutes a shell-escaped prompt and invokes via a login shell so your `$PATH` is loaded.
+- Shipped default (all six templates): `claude --allowed-tools Read,Write,Edit,Bash,Grep,Glob --permission-mode acceptEdits --print {prompt}`.
+- `LENS_RUNNER_OVERRIDE` env var swaps the runner for a single invocation (tests/ops).
+
+### Templates
+
+`webapp`, `cli`, `library`, `pipeline`, `protocol`, `blank` — all six embedded into the compiled binary as a filesystem-fallback.
+
+### Claude Code plugin
+
+- Seven skills: `init`, `sync`, `pull`, `apply`, `add`, `mark`, `status`.
+- `/lens:init` with no description argument surveys the repo, proposes a template, and drafts the intent — like Claude's `/init`.
+- `/lens:apply` opens plan mode with the apply bundle, then auto-advances `refs/lens/applied` when the working tree is clean post-plan.
+
+### Exit codes
+
+`0` success · `1` operation failed · `2` config missing or invalid · `3` git state incompatible.

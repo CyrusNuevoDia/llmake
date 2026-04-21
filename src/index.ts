@@ -12,7 +12,7 @@ import { runSync } from "./cli/sync";
 import { runValidate } from "./cli/validate";
 import { Exit, type ExitCode } from "./exit";
 
-const VERSION = "0.0.1";
+const VERSION = "0.1.0";
 
 const HELP = `lens ${VERSION}
 
