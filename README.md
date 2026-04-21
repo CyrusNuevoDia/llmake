@@ -12,7 +12,7 @@ Run without installing: `npx lens-engine <verb>`, `bunx lens-engine <verb>`.
 
 ## Quick start
 
-    lens init "a team invoicing app"         # scaffold .lenses/, populate via runner
+    lens init "a team invoicing app"         # scaffold lens.yml + .lenses/, populate via runner
     # edit .lenses/schema.md, .lenses/api.md, ... by hand
     lens sync                                 # propagate edits across lens set
     lens status                               # see drift
@@ -49,7 +49,7 @@ lens validate                                # sanity-check config
 lens status                                  # drift report
 lens add <name> --description <text> [--path <path>] [--dry-run]
 lens mark <synced|applied>
-lens --config <path>                         # override .lenses/config.yaml discovery
+lens --config <path>                         # override lens.yml discovery
 lens --help
 lens --version
 ```
@@ -78,7 +78,7 @@ Ship with six starter lens sets:
 | 2    | Config missing or invalid                                    |
 | 3    | Git state incompatible (e.g. `lens mark ...` outside a repo) |
 
-## Config (`.lenses/config.yaml`)
+## Config (`lens.yml`)
 
 ```yaml
 intent: |
@@ -107,11 +107,11 @@ lenses:
       - src/routes/**/*.ts
 ```
 
-Discovery order: `.lenses/config.yaml` → `.lenses/config.jsonc` → `.lenses/config.json`.
+Discovery order: `lens.yml` → `lens.yaml` → `lens.jsonc` → `lens.json`.
 
 ### `pullSources`
 
-Globs identifying which code files each lens watches during `lens pull`. If absent, pull falls back to every git-tracked file outside `.lenses/` and `.lens/`.
+Globs identifying which code files each lens watches during `lens pull`. If absent, pull falls back to every git-tracked file outside `.lenses/` and `lens.yml` (and its `.yaml`/`.jsonc`/`.json` variants).
 
 ### `affects`
 
@@ -127,7 +127,7 @@ When using `claude` as the runner, pass `--permission-mode acceptEdits` so the h
 
 `LENS_RUNNER_OVERRIDE="<cmd> {prompt}"` swaps the config's runner for a single invocation. Useful for tests and ops. Under the override, Lens uses a plain non-login `/bin/bash` so the command doesn't depend on your `.zshrc`/`.bashrc` succeeding.
 
-## The lockfile (`.lens/lock.json`)
+## The lockfile (`.lenses/lock.json`)
 
 Tracks hashes of lens files (and pull-source files) across tasks (`generate`, `sync`, `pull`). Commit it — it's how collaborators share "what was the last internally-consistent state."
 

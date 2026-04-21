@@ -117,7 +117,7 @@ describe("lens status", () => {
     expect(stdout).toContain("Lens status");
     expect(stdout).toContain("Repository: ");
     expect(stdout).toContain(basename(tempDir));
-    expect(stdout).toContain("Config:     .lenses/config.yaml (6 lenses)");
+    expect(stdout).toContain("Config:     lens.yml (6 lenses)");
     expect(stdout).toContain("✓ schema");
     expect(stdout).toContain("✓ api");
     expect(stdout).toContain("✓ roles");

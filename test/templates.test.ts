@@ -96,7 +96,7 @@ describe("shipped templates", () => {
     expect(exitCode).toBe(0);
     expect(stderr).toBe("");
 
-    const yaml = await readFile(join(tempDir, ".lenses/config.yaml"), "utf-8");
+    const yaml = await readFile(join(tempDir, "lens.yml"), "utf-8");
     expect(yaml).toContain("template smoke test");
     expect(yaml).not.toContain("__LENS_INTENT_PLACEHOLDER__");
   });

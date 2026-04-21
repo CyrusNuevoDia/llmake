@@ -30,7 +30,7 @@ Usage:
   lens --version
 
 Global flags:
-  --config <path>    Use a specific config file (default: .lenses/config.yaml)
+  --config <path>    Use a specific config file (default: lens.yml)
   --force            Overwrite existing config (init only)
   --dry-run          Print what would happen without executing
   -t, --template <name>  Template for init (default: webapp)

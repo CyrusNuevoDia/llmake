@@ -62,7 +62,7 @@ async function writeAffectsProject(
     : "";
 
   await writeFile(
-    join(dir, ".lenses/config.yaml"),
+    join(dir, "lens.yml"),
     `intent: affects test
 runner: echo {prompt}
 lenses:

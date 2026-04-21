@@ -57,12 +57,12 @@ Rules:
   expected. Do not rewrite files that don't need updates.
 - If two changes imply contradictory updates to a third lens, do not guess.
   Instead, leave the third lens unchanged and record the conflict in
-  \`.lens/conflicts.md\` (see below).
+  \`.lenses/conflicts.md\` (see below).
 - Use Edit (preferred) or Write tools to update files.
 
 Conflict reporting:
 If you detect any conflict you cannot resolve, write a markdown file at
-\`.lens/conflicts.md\` using the Write tool. Use this structure:
+\`.lenses/conflicts.md\` using the Write tool. Use this structure:
 
 \`\`\`markdown
 # Sync conflicts

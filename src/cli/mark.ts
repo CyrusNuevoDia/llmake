@@ -14,7 +14,7 @@ export interface MarkArgs {
   cwd?: string;
 }
 
-const LOCK_REL = ".lens/lock.json";
+const LOCK_REL = ".lenses/lock.json";
 
 function parseWhich(raw: string | undefined): MarkWhich | null {
   if (raw === "synced" || raw === "applied") {
@@ -90,7 +90,7 @@ async function refreshLockfileEntry(
   if (!loaded) {
     return false;
   }
-  const repoRoot = resolve(dirname(loaded.configPath), "..");
+  const repoRoot = dirname(loaded.configPath);
   const entry = await buildMarkLockEntry(which, loaded.config, repoRoot);
   if (!entry) {
     return false;

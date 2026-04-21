@@ -7,10 +7,10 @@ than duplicating prose.
 
 ## `lens init`
 
-Scaffold a new `.lenses/config.yaml`, create empty lens files, run the
-configured runner with the generate prompt to populate them from the intent
-+ template, write `.lens/lock.json`, and advance `refs/lens/synced` if the
-working tree is in a git repo.
+Scaffold a new `lens.yml`, create empty lens files, run the configured
+runner with the generate prompt to populate them from the intent +
+template, write `.lenses/lock.json`, and advance `refs/lens/synced` if
+the working tree is in a git repo.
 
 - **Positional args:** `[description]` — one-line intent string. If omitted
   and stdin is a TTY, `lens` prompts interactively.
@@ -26,9 +26,9 @@ working tree is in a git repo.
 Reconcile lens files with each other. Hashes each lens file against the
 sync baseline in the lockfile, invokes the runner with the sync prompt over
 the changed-lens closure (pruned via `affects` when defined), records new
-hashes, and — if the working tree is clean (ignoring `.lens/lock.json`) —
+hashes, and — if the working tree is clean (ignoring `.lenses/lock.json`) —
 advances `refs/lens/synced` to HEAD. If the runner writes
-`.lens/conflicts.md`, `lens` surfaces it and asks you to resolve manually.
+`.lenses/conflicts.md`, `lens` surfaces it and asks you to resolve manually.
 
 - **Positional args:** none.
 - **Flags:** `--force` (run even when no drift), `--dry-run` (print the
@@ -39,8 +39,9 @@ advances `refs/lens/synced` to HEAD. If the runner writes
 ## `lens pull`
 
 Reflect code changes back into the lens set. Resolves each lens's
-`pullSources` globs (falls back to all git-tracked files outside `.lenses/`,
-`.lens/`, `node_modules/`, and `.git/`), hashes them, and runs the runner
+`pullSources` globs (falls back to all git-tracked files outside
+`.lenses/`, `lens.yml` (and variants), `node_modules/`, and `.git/`),
+hashes them, and runs the runner
 with the pull prompt over changed files. On success, writes the new
 `pull` lockfile entry and advances `refs/lens/applied` when the tree is
 clean.

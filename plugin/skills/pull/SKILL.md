@@ -6,7 +6,7 @@ allowed-tools: Bash(lens:*)
 
 Before running the CLI, verify:
 1. `lens` binary is on PATH. If `command -v lens` returns non-zero, tell the user: "lens CLI not found. Install with `npm i -g lens-engine`."
-2. `.lenses/config.yaml` exists (use `Bash` tool to test `-f .lenses/config.yaml`). If not, tell the user: "No `.lenses/config.yaml` found. Run `/lens:init` first."
+2. `lens.yml` exists (use `Bash` tool to test `-f lens.yml`). If not, tell the user: "No `lens.yml` found. Run `/lens:init` first."
 
 Then run (passing arguments through verbatim):
 

@@ -17,7 +17,7 @@ export async function readLock(lockPath: string): Promise<LensLock> {
 
 /**
  * Write the lockfile to disk as formatted JSON with a trailing newline.
- * Creates the containing directory if needed (e.g., `.lens/`).
+ * Creates the containing directory if needed (e.g., `.lenses/`).
  */
 export async function writeLock(
   lockPath: string,

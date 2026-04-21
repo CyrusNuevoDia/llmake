@@ -5,11 +5,14 @@ import { parse as parseYaml } from "yaml";
 import { z } from "zod";
 import type { LensConfig } from "./types";
 
-const CONFIG_FILES = [
-  ".lenses/config.yaml",
-  ".lenses/config.jsonc",
-  ".lenses/config.json",
+export const CONFIG_FILES = [
+  "lens.yml",
+  "lens.yaml",
+  "lens.jsonc",
+  "lens.json",
 ] as const;
+
+export const CONFIG_FILENAMES: ReadonlySet<string> = new Set(CONFIG_FILES);
 
 const LensSettingsSchema = z
   .object({
@@ -53,7 +56,7 @@ async function fileExists(path: string): Promise<boolean> {
 
 /**
  * Walk the filesystem looking for a Lens config file.
- * Discovery order: `.lenses/config.yaml` → `.lenses/config.jsonc` → `.lenses/config.json`.
+ * Discovery order: `lens.yml` → `lens.yaml` → `lens.jsonc` → `lens.json`.
  * Returns absolute path or null if none found.
  */
 export async function discoverConfig(cwd?: string): Promise<string | null> {

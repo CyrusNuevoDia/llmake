@@ -2,7 +2,7 @@
 # The __LENS_INTENT_PLACEHOLDER__ token below is substituted by `lens init`.
 
 intent: |
-  A CLI that maintains prose 'lens' artifacts (schema, api, flows, etc.) in sync with each other and with code. Two state refs — refs/lens/synced and refs/lens/applied — track consistency horizontally (lens ↔ lens via `lens sync`) and vertically (lens ↔ code via `lens apply`/`lens pull`). Config lives at .lenses/config.yaml; lockfile at .lens/lock.json. Runner is any shell command containing {prompt}, defaulting to claude --print.
+  A CLI that maintains prose 'lens' artifacts (schema, api, flows, etc.) in sync with each other and with code. Two state refs — refs/lens/synced and refs/lens/applied — track consistency horizontally (lens ↔ lens via `lens sync`) and vertically (lens ↔ code via `lens apply`/`lens pull`). Config lives at lens.yml at the repo root; lockfile at .lenses/lock.json. Runner is any shell command containing {prompt}, defaulting to claude --print.
 
 runner: claude --allowed-tools Read,Write,Edit,Bash,Grep,Glob --permission-mode acceptEdits --print {prompt}
 

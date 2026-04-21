@@ -145,7 +145,7 @@ async function writeNoPullSourcesProject(dir: string): Promise<void> {
   await mkdir(join(dir, ".lenses"), { recursive: true });
   await mkdir(join(dir, "src"), { recursive: true });
   await writeFile(
-    join(dir, ".lenses/config.yaml"),
+    join(dir, "lens.yml"),
     `intent: test
 runner: echo {prompt}
 lenses:
@@ -175,7 +175,7 @@ describe("lens pull", () => {
     expect(exitCode).toBe(1);
     expect(stdout).toBe("");
     expect(stderr).toContain(
-      "lens: pull — no code sources (define pullSources in .lenses/config.yaml lenses)"
+      "lens: pull — no code sources (define pullSources in lens.yml lenses)"
     );
   });
 
@@ -193,7 +193,7 @@ describe("lens pull", () => {
     expect(stdout).toContain("running prompt via runner");
     expect(stdout).toContain("runner completed");
 
-    const lock = await readJson(join(tempDir, ".lens/lock.json"));
+    const lock = await readJson(join(tempDir, ".lenses/lock.json"));
     const pullEntry = (lock.tasks as Record<string, unknown>).pull as
       | Record<string, unknown>
       | undefined;
@@ -237,7 +237,7 @@ describe("lens pull", () => {
     expect(stderr).toBe("");
     expect(stdout).toContain("running prompt via runner");
 
-    const lock = await readJson(join(tempDir, ".lens/lock.json"));
+    const lock = await readJson(join(tempDir, ".lenses/lock.json"));
     const pullEntry = (lock.tasks as Record<string, unknown>).pull as
       | Record<string, unknown>
       | undefined;
@@ -248,7 +248,7 @@ describe("lens pull", () => {
 
     expect(pullEntry).toBeDefined();
     expect(files).toContain("src/index.ts");
-    expect(files).not.toContain(".lenses/config.yaml");
+    expect(files).not.toContain("lens.yml");
     expect(files).not.toContain(".lenses/schema.md");
   });
 
@@ -296,7 +296,7 @@ describe("lens pull", () => {
     expect(stdout).toContain("src/routes/todos.ts");
     expect(stdout).toContain("src/components/App.tsx");
 
-    const lock = await readJson(join(tempDir, ".lens/lock.json"));
+    const lock = await readJson(join(tempDir, ".lenses/lock.json"));
     expect((lock.tasks as Record<string, unknown>).pull).toBeUndefined();
     expect(
       runGit(["rev-parse", "--verify", "refs/lens/applied"], tempDir).status
@@ -331,7 +331,7 @@ describe("lens pull", () => {
     });
     expect(result.exitCode).toBe(0);
 
-    const lock = await readJson(join(tempDir, ".lens/lock.json"));
+    const lock = await readJson(join(tempDir, ".lenses/lock.json"));
     const syncEntry = (lock.tasks as Record<string, unknown>).sync as
       | Record<string, unknown>
       | undefined;

@@ -4,7 +4,7 @@ import { Shescape } from "shescape";
 /**
  * Env var that, when set, overrides the config's `runner` template for this
  * invocation. Used by tests and for ops/debugging — lets you swap models or
- * mock the LLM without editing `.lenses/config.yaml`. Must still contain the
+ * mock the LLM without editing `lens.yml`. Must still contain the
  * `{prompt}` placeholder.
  */
 export const RUNNER_OVERRIDE_ENV = "LENS_RUNNER_OVERRIDE";
@@ -17,7 +17,7 @@ export const RUNNER_OVERRIDE_ENV = "LENS_RUNNER_OVERRIDE";
  *
  * Lens is runner-agnostic: we stream the runner's stdout/stderr straight
  * to the user and don't parse any of its output. Any cross-invocation
- * signals (e.g. `.lens/conflicts.md` from the sync prompt) travel via the
+ * signals (e.g. `.lenses/conflicts.md` from the sync prompt) travel via the
  * filesystem, not via this function's return value.
  */
 export function executeRunner(

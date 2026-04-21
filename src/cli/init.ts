@@ -23,8 +23,8 @@ export interface InitArgs {
   configPath?: string;
 }
 
-const DEFAULT_CONFIG_REL = ".lenses/config.yaml";
-const LOCK_REL = ".lens/lock.json";
+const DEFAULT_CONFIG_REL = "lens.yml";
+const LOCK_REL = ".lenses/lock.json";
 
 async function fileExists(path: string): Promise<boolean> {
   try {
@@ -50,11 +50,11 @@ async function promptForIntent(): Promise<string> {
 }
 
 async function ensureLensFiles(
-  configDir: string,
+  repoRoot: string,
   lensPaths: string[]
 ): Promise<void> {
   for (const lensPath of lensPaths) {
-    const full = resolve(configDir, "..", lensPath);
+    const full = resolve(repoRoot, lensPath);
     await mkdir(dirname(full), { recursive: true });
     if (!(await fileExists(full))) {
       await writeFile(full, "");
@@ -63,12 +63,12 @@ async function ensureLensFiles(
 }
 
 async function snapshotLensFiles(
-  configDir: string,
+  repoRoot: string,
   lensPaths: string[]
 ): Promise<FileSnapshot[]> {
   const snapshots: FileSnapshot[] = [];
   for (const lensPath of lensPaths) {
-    const full = resolve(configDir, "..", lensPath);
+    const full = resolve(repoRoot, lensPath);
     let content = "";
     try {
       content = await readFile(full, "utf-8");
@@ -87,12 +87,12 @@ async function snapshotLensFiles(
  * legitimate no-op behavior.
  */
 async function warnIfRunnerNoOp(
-  configDir: string,
+  repoRoot: string,
   lenses: { path: string }[],
   preSnapshots: FileSnapshot[]
 ): Promise<void> {
   const postSnapshots = await snapshotLensFiles(
-    configDir,
+    repoRoot,
     lenses.map((l) => l.path)
   );
   const preByPath = new Map(preSnapshots.map((s) => [s.path, s.content]));
@@ -116,7 +116,7 @@ export async function runInit(args: InitArgs): Promise<ExitCode> {
   const configPath = args.configPath
     ? resolve(args.configPath)
     : resolve(cwd, DEFAULT_CONFIG_REL);
-  const configDir = dirname(configPath);
+  const repoRoot = dirname(configPath);
 
   if ((await fileExists(configPath)) && !args.force) {
     console.error(
@@ -149,14 +149,14 @@ export async function runInit(args: InitArgs): Promise<ExitCode> {
     return Exit.SUCCESS;
   }
 
-  await mkdir(configDir, { recursive: true });
+  await mkdir(repoRoot, { recursive: true });
   await writeFile(configPath, finalYaml);
 
   // Re-read the config we just wrote so Zod validates the substituted form.
   const config = await loadConfig(configPath);
 
   await ensureLensFiles(
-    configDir,
+    repoRoot,
     config.lenses.map((l) => l.path)
   );
 
@@ -166,7 +166,7 @@ export async function runInit(args: InitArgs): Promise<ExitCode> {
     );
   } else {
     const snapshots = await snapshotLensFiles(
-      configDir,
+      repoRoot,
       config.lenses.map((l) => l.path)
     );
     const prompt = assemblePrompt(GENERATE_PROMPT, {
@@ -184,20 +184,20 @@ export async function runInit(args: InitArgs): Promise<ExitCode> {
       return Exit.FAIL;
     }
 
-    await warnIfRunnerNoOp(configDir, config.lenses, snapshots);
+    await warnIfRunnerNoOp(repoRoot, config.lenses, snapshots);
   }
 
   const populated = await snapshotLensFiles(
-    configDir,
+    repoRoot,
     config.lenses.map((l) => l.path)
   );
   const fileHashes: Record<string, string> = {};
   for (const snap of populated) {
-    const full = resolve(configDir, "..", snap.path);
+    const full = resolve(repoRoot, snap.path);
     fileHashes[snap.path] = await hashFile(full);
   }
   const merkleRoot = computeMerkleRoot(fileHashes);
-  const lockPath = resolve(configDir, "..", LOCK_REL);
+  const lockPath = resolve(repoRoot, LOCK_REL);
   await writeLock(lockPath, {
     version: 1,
     tasks: {

@@ -76,10 +76,9 @@ export function pruneLensesForSync(
 
 export async function assembleSyncContext(
   config: LensConfig,
-  configDir: string,
+  repoRoot: string,
   lock: LensLock
 ): Promise<SyncTaskContext> {
-  const repoRoot = resolve(configDir, "..");
   const relSources = config.lenses.map((lens) => lens.path);
   const sources = relSources.map((lensPath) => resolve(repoRoot, lensPath));
 

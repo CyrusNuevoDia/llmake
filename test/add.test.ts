@@ -170,10 +170,7 @@ describe("lens add", () => {
 
     expect(exitCode).toBe(0);
 
-    const configYaml = await readFile(
-      join(tempDir, ".lenses/config.yaml"),
-      "utf-8"
-    );
+    const configYaml = await readFile(join(tempDir, "lens.yml"), "utf-8");
     expect(configYaml).toContain("name: wireframes");
     expect(configYaml).toContain("low-fi sketches");
 
@@ -181,7 +178,7 @@ describe("lens add", () => {
     expect(await fileExists(lensPath)).toBe(true);
     expect(await readFile(lensPath, "utf-8")).toBe("generated\n");
 
-    const lock = await readJson(join(tempDir, ".lens/lock.json"));
+    const lock = await readJson(join(tempDir, ".lenses/lock.json"));
     const generateEntry = (lock.tasks as Record<string, unknown>).generate as
       | Record<string, unknown>
       | undefined;
@@ -198,7 +195,7 @@ describe("lens add", () => {
 
   it("prints the updated YAML and makes no disk changes on --dry-run", async () => {
     await initBlankProject(tempDir);
-    const configPath = join(tempDir, ".lenses/config.yaml");
+    const configPath = join(tempDir, "lens.yml");
     const before = await readFile(configPath, "utf-8");
 
     const { exitCode, stdout } = await runLens([
@@ -231,10 +228,7 @@ describe("lens add", () => {
     expect(exitCode).toBe(0);
     expect(await fileExists(join(tempDir, "docs/special.md"))).toBe(true);
 
-    const configYaml = await readFile(
-      join(tempDir, ".lenses/config.yaml"),
-      "utf-8"
-    );
+    const configYaml = await readFile(join(tempDir, "lens.yml"), "utf-8");
     expect(configYaml).toContain("path: docs/special.md");
   });
 

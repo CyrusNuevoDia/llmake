@@ -45,7 +45,7 @@ function templatePath(name: string): string {
 /**
  * Read a shipped template and parse/validate it. The returned config still
  * carries the intent placeholder — callers substitute the user's description
- * before writing `.lenses/config.yaml`.
+ * before writing `lens.yml`.
  */
 export async function loadTemplate(name: string): Promise<{
   raw: string;

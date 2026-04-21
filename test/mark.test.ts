@@ -7,7 +7,7 @@ import { join, resolve } from "node:path";
 async function scaffoldLensProject(dir: string): Promise<void> {
   await mkdir(join(dir, ".lenses"), { recursive: true });
   await writeFile(
-    join(dir, ".lenses/config.yaml"),
+    join(dir, "lens.yml"),
     `intent: test
 runner: echo {prompt}
 lenses:
@@ -24,7 +24,7 @@ lenses:
 }
 
 async function readLock(dir: string): Promise<Record<string, unknown>> {
-  return JSON.parse(await readFile(join(dir, ".lens/lock.json"), "utf-8"));
+  return JSON.parse(await readFile(join(dir, ".lenses/lock.json"), "utf-8"));
 }
 
 const SHA256_PREFIX = /^sha256:/;
@@ -227,8 +227,9 @@ describe("lens mark — lockfile refresh (F6)", () => {
     expect(pull).toBeDefined();
 
     const files = pull?.files as Record<string, string>;
-    // Fallback excludes .lenses/ and .lens/; src.ts should be tracked.
+    // Fallback excludes .lenses/ and lens.yml variants; src.ts should be tracked.
     expect(Object.keys(files)).toContain("src.ts");
-    expect(Object.keys(files)).not.toContain(".lenses/config.yaml");
+    expect(Object.keys(files)).not.toContain("lens.yml");
+    expect(Object.keys(files)).not.toContain(".lenses/lock.json");
   });
 });

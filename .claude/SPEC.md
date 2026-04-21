@@ -20,12 +20,12 @@ The CLI (`lens`) is a fork of llmake with added semantics for lens workflows. Th
 - **Fork**: Rename repo to `lens` (or `lens-engine` if maintaining llmake alongside is desired — but default is full rename).
 - **Binary**: `lens`
 - **Package name (npm)**: `lens` if available, otherwise `@cyrusnuevodia/lens`.
-- **Config discovery order**: `.lenses/config.yaml` → `.lenses/config.jsonc` → `.lenses/config.json`. The old llmake formats (`llmake.ts`, `llmake.jsonc`, etc.) are **not supported** in Lens. This is a hard break from llmake's config surface.
+- **Config discovery order**: `lens.yml` → `lens.yaml` → `lens.jsonc` → `lens.json` (all at repo root). The old llmake formats (`llmake.ts`, `llmake.jsonc`, etc.) are **not supported** in Lens. This is a hard break from llmake's config surface.
 
 Preserve from llmake:
 
 - SHA-256 per-file hashing + merkle root
-- Lockfile structure (renamed `.llmake.lock` → `.lens/lock.json`)
+- Lockfile structure (renamed `.llmake.lock` → `.lenses/lock.json`)
 - Runner-agnostic `{prompt}` substitution
 - Login-shell execution semantics
 - `--force`, `--dry-run`, `--status`, `--config`, `--help`, `--version` flags
@@ -62,7 +62,7 @@ These refs let `lens status` report drift precisely and let `sync`/`apply`/`pull
 
 ## 3. Config Format
 
-Single user-facing config: `.lenses/config.yaml`. No secondary `llmake.jsonc`.
+Single user-facing config: `lens.yml` at the repo root. No secondary `llmake.jsonc`.
 
 ```yaml
 # Seed description of the system. Passed into every generation prompt.
@@ -134,7 +134,7 @@ Each task type has a prompt template (§5) with variable substitution. Tasks are
 
 ### Hash tracking per task
 
-Preserve llmake's lockfile mechanism. The lockfile (`.lens/lock.json`) tracks:
+Preserve llmake's lockfile mechanism. The lockfile (`.lenses/lock.json`) tracks:
 
 ```json
 {
@@ -315,10 +315,10 @@ Initialize a Lens setup in the current directory.
 
 Behavior:
 
-1. If `.lenses/config.yaml` already exists, fail with a clear error unless `--force` is passed.
+1. If `lens.yml` already exists, fail with a clear error unless `--force` is passed.
 2. Prompt for intent if `[description]` is not provided (read from stdin).
 3. Select template: either from `--template` flag, or default to `webapp`.
-4. Write `.lenses/config.yaml` with intent + template's lens definitions + default runner.
+4. Write `lens.yml` with intent + template's lens definitions + default runner.
 5. Create empty files at each `lenses[].path`.
 6. Run the generate task to populate lens files.
 7. Create `refs/lens/synced` pointing at HEAD (if in a git repo).
@@ -330,7 +330,7 @@ Add a new lens to the set.
 
 Behavior:
 
-1. Read `.lenses/config.yaml`.
+1. Read `lens.yml`.
 2. Prompt for description and path (or accept via flags).
 3. Append to `lenses[]`.
 4. Write updated config.
@@ -387,7 +387,7 @@ Lens status
 ───────────
 
 Repository: /Users/cyrus/work/invoicing-app
-Config:     .lenses/config.yaml (6 lenses)
+Config:     lens.yml (6 lenses)
 
 Refs:
   lens/synced   abc1234 (2 hours ago)
@@ -471,7 +471,7 @@ This skill does real orchestration because the CLI's `apply` stops short of plan
 On any slash command invocation, skills should first check:
 
 1. `lens` binary is on PATH. If not, instruct: `npm i -g lens` (or equivalent).
-2. `.lenses/config.yaml` exists (skip this check for `/lens:init`).
+2. `lens.yml` exists (skip this check for `/lens:init`).
 
 If either check fails, surface a clean error and exit without calling the CLI.
 
@@ -479,7 +479,7 @@ If either check fails, surface a clean error and exit without calling the CLI.
 
 ## 9. Templates
 
-Templates are pre-built `.lenses/config.yaml` files shipped with the CLI. Stored in the repo under `templates/<name>.yaml`.
+Templates are pre-built `lens.yml` files shipped with the CLI. Stored in the repo under `templates/<name>.yaml`.
 
 ### MVP template set
 
@@ -494,7 +494,7 @@ Templates are pre-built `.lenses/config.yaml` files shipped with the CLI. Stored
 
 ### Template file format
 
-Identical to user `.lenses/config.yaml` format. The `intent` field in templates is a placeholder (`TODO: describe your system`); `lens init` replaces it with the user's actual description before writing.
+Identical to user `lens.yml` format. The `intent` field in templates is a placeholder (`TODO: describe your system`); `lens init` replaces it with the user's actual description before writing.
 
 ### Template selection
 
@@ -522,7 +522,7 @@ Each phase is independently demoable.
 - Ship `webapp` and `blank` templates.
 - Preserve llmake's lockfile, runner, and hashing infrastructure.
 
-**Milestone**: `lens init "a task tracker"` produces a `.lenses/` directory with 6 populated lens files.
+**Milestone**: `lens init "a task tracker"` produces a `lens.yml` config and a `.lenses/` directory with 6 populated lens files.
 
 ### Phase 2 — `sync` + `status`
 
@@ -589,9 +589,9 @@ Both should be available; prompt templates choose which to use. The sync prompt 
 
 ### 11.4 Lockfile location
 
-Move from `.llmake.lock` (llmake default, repo root) to `.lens/lock.json`. This groups lens-engine state under a single hidden directory, leaving room for future cached artifacts (e.g. pre-computed diffs, template cache) under `.lens/`.
+The lockfile lives at `.lenses/lock.json`, alongside user-authored lens content. Earlier layouts split engine state into a parallel `.lens/` directory; we collapsed them because two hidden dirs named one character apart confused the user every time. Everything tool-owned except the config file now lives inside `.lenses/`.
 
-Add `.lens/` to a default `.gitignore` entry created by `lens init`? **No.** The lockfile _should_ be committed — it's how team members share state. Document this clearly.
+Add `.lenses/lock.json` to a default `.gitignore` entry created by `lens init`? **No.** The lockfile _should_ be committed — it's how team members share state. Document this clearly.
 
 ### 11.5 Error handling
 

@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
-import { discoverConfig, loadConfig } from "../config";
+import { CONFIG_FILENAMES, discoverConfig, loadConfig } from "../config";
 import { Exit, type ExitCode } from "../exit";
 import { changedSince, diffSince, isGitRepo } from "../git";
 import type { LensConfig } from "../types";
@@ -48,9 +48,9 @@ function formatErrorMessage(error: unknown): string {
 }
 
 function filterCodePaths(paths: string[]): string[] {
-  return paths.filter((path) => {
-    return !(path.startsWith(".lenses/") || path.startsWith(".lens/"));
-  });
+  return paths.filter(
+    (path) => !(path.startsWith(".lenses/") || CONFIG_FILENAMES.has(path))
+  );
 }
 
 function runGit(
@@ -225,7 +225,7 @@ async function assembleApplyBundleFromConfig(
   configPath: string,
   config: LensConfig
 ): Promise<ApplyBundle> {
-  const workspaceRoot = resolve(dirname(configPath), "..");
+  const workspaceRoot = dirname(configPath);
   const lenses = await readLensRecords(config, workspaceRoot);
   const inGitRepo = await isGitRepo(workspaceRoot);
 
@@ -234,7 +234,11 @@ async function assembleApplyBundleFromConfig(
   let fileTree = NOT_GIT_TREE_NOTE;
 
   if (inGitRepo) {
-    diff = await diffSince(APPLIED_REF, [".lenses/"], workspaceRoot);
+    diff = await diffSince(
+      APPLIED_REF,
+      config.lenses.map((lens) => lens.path),
+      workspaceRoot
+    );
     codeFiles = filterCodePaths(
       await changedSince(APPLIED_REF, ["."], workspaceRoot)
     );
@@ -273,7 +277,7 @@ export async function runApply(args: ApplyArgs): Promise<ExitCode> {
     : await discoverConfig();
 
   if (!configPath) {
-    console.error("lens: no config file found (.lenses/config.yaml)");
+    console.error("lens: no config file found (lens.yml)");
     return Exit.CONFIG;
   }
 

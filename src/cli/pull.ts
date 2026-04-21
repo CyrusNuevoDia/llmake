@@ -27,26 +27,30 @@ export interface PullArgs {
   configPath?: string;
 }
 
-const LOCK_REL = ".lens/lock.json";
+const LOCK_REL = ".lenses/lock.json";
 const PULL_REF = "refs/lens/applied";
 const PROMPT_SNAPSHOT_LIMIT = 50;
 const FALLBACK_SOURCE_GUIDANCE =
-  "lens: pull — no code sources (define pullSources in .lenses/config.yaml lenses)";
+  "lens: pull — no code sources (define pullSources in lens.yml lenses)";
 const DIRTY_TREE_GUIDANCE =
   "lens: pull complete. Commit changes and run 'lens mark applied' to advance ref.";
-const LOCKFILE_PATHSPEC = ":(exclude).lens/lock.json";
+const LOCKFILE_PATHSPEC = ":(exclude).lenses/lock.json";
 const GIT_CODE_EXCLUDES = [
   ":(exclude).lenses",
-  ":(exclude).lens",
+  ":(exclude)lens.yml",
+  ":(exclude)lens.yaml",
+  ":(exclude)lens.jsonc",
+  ":(exclude)lens.json",
   ":(exclude)node_modules",
   ":(exclude).git",
 ];
-const FALLBACK_EXCLUDED_PREFIXES = [
-  ".lenses/",
-  ".lens/",
-  "node_modules/",
-  ".git/",
-];
+const FALLBACK_EXCLUDED_PATHS: ReadonlySet<string> = new Set([
+  "lens.yml",
+  "lens.yaml",
+  "lens.jsonc",
+  "lens.json",
+]);
+const FALLBACK_EXCLUDED_PREFIXES = [".lenses/", "node_modules/", ".git/"];
 
 function formatErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -78,6 +82,9 @@ function dedupeAndSort(paths: string[]): string[] {
 }
 
 function isExcludedFallbackPath(path: string): boolean {
+  if (FALLBACK_EXCLUDED_PATHS.has(path)) {
+    return true;
+  }
   for (const prefix of FALLBACK_EXCLUDED_PREFIXES) {
     if (path.startsWith(prefix)) {
       return true;
@@ -346,7 +353,7 @@ export async function runPull(args: PullArgs): Promise<ExitCode> {
     : await discoverConfig();
 
   if (!configPath) {
-    console.error("lens: no config file found (.lenses/config.yaml)");
+    console.error("lens: no config file found (lens.yml)");
     return Exit.CONFIG;
   }
 
@@ -358,8 +365,7 @@ export async function runPull(args: PullArgs): Promise<ExitCode> {
     return Exit.CONFIG;
   }
 
-  const configDir = dirname(configPath);
-  const repoRoot = resolve(configDir, "..");
+  const repoRoot = dirname(configPath);
 
   if (!(await ensureLensFilesExist(config, repoRoot))) {
     return Exit.FAIL;

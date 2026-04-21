@@ -33,7 +33,7 @@ export interface LensDef {
   /**
    * Optional globs (relative to repo root) that identify the code files this
    * lens should track for `lens pull`. If absent, `pull` falls back to tracking
-   * all git-tracked files outside `.lenses/` and `.lens/`.
+   * all git-tracked files outside `.lenses/` and `lens.yml`.
    */
   pullSources?: string[];
   /**
@@ -51,7 +51,7 @@ export interface LensDef {
 export type TaskKind = "generate" | "sync" | "pull";
 
 /**
- * The `.lens/lock.json` file shape.
+ * The `.lenses/lock.json` file shape.
  * Tracks the state of each task's last run for incremental change detection.
  */
 export interface LensLock {

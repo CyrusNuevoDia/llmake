@@ -21,7 +21,7 @@ export interface AddArgs {
 const DEFAULT_LENS_DIR = ".lenses";
 const DIRTY_TREE_GUIDANCE =
   "lens: add complete. Commit changes and run 'lens mark synced' to advance ref.";
-const LOCK_REL = ".lens/lock.json";
+const LOCK_REL = ".lenses/lock.json";
 
 async function fileExists(path: string): Promise<boolean> {
   try {
@@ -52,7 +52,7 @@ function makeLockEntry(
 }
 
 function resolveRepoRoot(configPath: string): string {
-  return resolve(dirname(configPath), "..");
+  return dirname(configPath);
 }
 
 function resolveLensFile(repoRoot: string, lensPath: string): string {

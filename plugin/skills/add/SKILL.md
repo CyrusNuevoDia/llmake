@@ -1,13 +1,13 @@
 ---
 name: add
-description: Append a new lens to .lenses/config.yaml and generate its initial content.
+description: Append a new lens to lens.yml and generate its initial content.
 allowed-tools: Bash(lens:*)
 argument-hint: <name> --description "<text>" [--path <path>]
 ---
 
 Before running the CLI, verify:
 1. `lens` binary is on PATH. If `command -v lens` returns non-zero, tell the user: "lens CLI not found. Install with `npm i -g lens-engine`."
-2. `.lenses/config.yaml` exists (use `Bash` tool to test `-f .lenses/config.yaml`). If not, tell the user: "No `.lenses/config.yaml` found. Run `/lens:init` first."
+2. `lens.yml` exists (use `Bash` tool to test `-f lens.yml`). If not, tell the user: "No `lens.yml` found. Run `/lens:init` first."
 
 The CLI requires `<name>` and `--description "<text>"`; it will exit non-zero with a clear error if either is missing. Run (passing arguments through verbatim):
 

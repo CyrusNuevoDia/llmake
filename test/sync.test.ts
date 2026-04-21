@@ -124,7 +124,7 @@ describe("lens sync", () => {
   it("fails when a configured lens file is missing", async () => {
     await mkdir(join(tempDir, ".lenses"), { recursive: true });
     await writeFile(
-      join(tempDir, ".lenses/config.yaml"),
+      join(tempDir, "lens.yml"),
       `intent: test
 runner: echo {prompt}
 lenses:
@@ -182,7 +182,7 @@ done`
     expect(stdout).toContain("runner completed");
     expect(stdout).toContain("Commit changes and run 'lens mark synced'");
 
-    const lock = await readJson(join(tempDir, ".lens/lock.json"));
+    const lock = await readJson(join(tempDir, ".lenses/lock.json"));
     const syncEntry = (lock.tasks as Record<string, unknown>).sync as
       | Record<string, unknown>
       | undefined;
@@ -253,7 +253,7 @@ done`
     );
     expect(await fileExists(markerPath)).toBe(false);
 
-    const lock = await readJson(join(tempDir, ".lens/lock.json"));
+    const lock = await readJson(join(tempDir, ".lenses/lock.json"));
     expect((lock.tasks as Record<string, unknown>).sync).toBeUndefined();
   });
 

@@ -1,6 +1,6 @@
 import { access } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
-import { discoverConfig, loadConfig } from "../config";
+import { CONFIG_FILENAMES, discoverConfig, loadConfig } from "../config";
 import { Exit, type ExitCode } from "../exit";
 import {
   changedSince,
@@ -39,7 +39,7 @@ interface GitStatusSummary {
   codeDriftCount: number;
 }
 
-const LOCK_REL = ".lens/lock.json";
+const LOCK_REL = ".lenses/lock.json";
 const SYNCED_REF = "refs/lens/synced";
 const APPLIED_REF = "refs/lens/applied";
 const NOT_GIT_REFS_NOTE = "(not a git repo — ref tracking disabled)";
@@ -62,7 +62,7 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 function getWorkspaceRoot(configPath: string): string {
-  return resolve(dirname(configPath), "..");
+  return dirname(configPath);
 }
 
 function getSyncBaselineEntry(lock: LensLock): TaskLockEntry | undefined {
@@ -91,9 +91,9 @@ function formatLensRow(
 }
 
 function filterCodePaths(paths: string[]): string[] {
-  return paths.filter((path) => {
-    return !(path.startsWith(".lenses/") || path.startsWith(".lens/"));
-  });
+  return paths.filter(
+    (path) => !(path.startsWith(".lenses/") || CONFIG_FILENAMES.has(path))
+  );
 }
 
 function formatCodeSummary(codeDriftCount: number): string {
@@ -232,7 +232,7 @@ export async function runStatus(args: StatusArgs): Promise<ExitCode> {
     : await discoverConfig();
 
   if (!configPath) {
-    console.error("lens: no config file found (.lenses/config.yaml)");
+    console.error("lens: no config file found (lens.yml)");
     return Exit.CONFIG;
   }
 

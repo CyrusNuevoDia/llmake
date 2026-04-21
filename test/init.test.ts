@@ -105,7 +105,7 @@ done
       expect(body.length).toBeGreaterThan(0);
     }
 
-    const lock = await readJson(join(tempDir, ".lens/lock.json"));
+    const lock = await readJson(join(tempDir, ".lenses/lock.json"));
     expect(lock.version).toBe(1);
     const generateEntry = (lock.tasks as Record<string, unknown>).generate as
       | Record<string, unknown>
@@ -126,10 +126,10 @@ done
     expect(stdout).toContain("initialized blank config");
     expect(stderr).toBe("");
 
-    const configExists = await fileExists(join(tempDir, ".lenses/config.yaml"));
+    const configExists = await fileExists(join(tempDir, "lens.yml"));
     expect(configExists).toBe(true);
 
-    const lock = await readJson(join(tempDir, ".lens/lock.json"));
+    const lock = await readJson(join(tempDir, ".lenses/lock.json"));
     expect(lock.version).toBe(1);
     expect((lock.tasks as Record<string, unknown>).generate).toBeDefined();
   });
@@ -160,14 +160,14 @@ done
     ]);
     expect(exitCode).toBe(0);
 
-    const yaml = await readFile(join(tempDir, ".lenses/config.yaml"), "utf-8");
+    const yaml = await readFile(join(tempDir, "lens.yml"), "utf-8");
     expect(yaml).toContain("second");
   });
 
   it("writes a valid YAML config with intent substituted", async () => {
     await runLens(["init", "--template", "blank", "a team invoicing app"]);
 
-    const yaml = await readFile(join(tempDir, ".lenses/config.yaml"), "utf-8");
+    const yaml = await readFile(join(tempDir, "lens.yml"), "utf-8");
     expect(yaml).toContain("a team invoicing app");
     expect(yaml).not.toContain("__LENS_INTENT_PLACEHOLDER__");
   });

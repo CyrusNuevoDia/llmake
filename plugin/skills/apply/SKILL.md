@@ -4,7 +4,7 @@ description: Make the codebase match the lenses via Claude Code plan mode.
 allowed-tools: Bash(lens:*) EnterPlanMode
 ---
 
-1. Prereqs: `lens` on PATH, `.lenses/config.yaml` exists (if not, tell user and stop).
+1. Prereqs: `lens` on PATH, `lens.yml` exists (if not, tell user and stop).
 2. Run `lens apply --dry-run` via Bash. Capture stdout — this is the context bundle.
 3. Invoke the `EnterPlanMode` tool with a plan prompt consisting of:
 

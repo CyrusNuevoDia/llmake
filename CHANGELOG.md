@@ -1,12 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Breaking
+
+- Config file moved from `.lenses/config.yaml` to `lens.yml` at the repo root. Discovery order is now `lens.yml` → `lens.yaml` → `lens.jsonc` → `lens.json`.
+- Lockfile moved from `.lens/lock.json` to `.lenses/lock.json`.
+- Transient conflicts file moved from `.lens/conflicts.md` to `.lenses/conflicts.md`.
+- The `.lens/` directory is gone — everything tool-owned except the config now lives inside `.lenses/` alongside the prose lens files.
+
 ## 0.1.0 — Initial public release (2026-04-21)
 
 First public release of `lens-engine`. Ships a CLI (`lens`) and Claude Code plugin for keeping prose "lens" artifacts in sync with each other and with the code.
 
 ### CLI verbs
 
-- `lens init [description] [--template <name>]` — scaffold `.lenses/` from one of six starter templates and generate initial lens content via your configured runner.
+- `lens init [description] [--template <name>]` — scaffold `lens.yml` + `.lenses/` from one of six starter templates and generate initial lens content via your configured runner.
 - `lens sync` — propagate edits across the lens set. Emits structured `<lens-conflict>` blocks when propagation is ambiguous.
 - `lens pull` — reflect code changes back into the lenses. Per-lens `pullSources` globs; falls back to git-tracked files.
 - `lens apply` / `lens diff` — assemble a context bundle (intent + lenses + code diff) for a downstream coding agent. The plugin wires this into Claude Code plan mode.
@@ -18,7 +27,7 @@ First public release of `lens-engine`. Ships a CLI (`lens`) and Claude Code plug
 ### State model
 
 - Two git refs — `refs/lens/synced` (horizontal lens ↔ lens consistency) and `refs/lens/applied` (vertical lens ↔ code consistency) — advance automatically on clean trees. On dirty trees the verb prints commit-then-`lens mark` guidance.
-- Lockfile at `.lens/lock.json` — content-addressed hashes per task (`generate`, `sync`, `pull`). Commit it.
+- Lockfile at `.lenses/lock.json` — content-addressed hashes per task (`generate`, `sync`, `pull`). Commit it.
 
 ### Runner contract
 

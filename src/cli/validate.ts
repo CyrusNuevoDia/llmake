@@ -15,7 +15,7 @@ interface CheckResult {
   details: string[];
 }
 
-const NO_CONFIG_MESSAGE = "lens: no config file found (.lenses/config.yaml)";
+const NO_CONFIG_MESSAGE = "lens: no config file found (lens.yml)";
 
 function formatErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -32,7 +32,7 @@ async function fileExists(path: string): Promise<boolean> {
 }
 
 function getWorkspaceRoot(configPath: string): string {
-  return resolve(dirname(configPath), "..");
+  return dirname(configPath);
 }
 
 function displayPath(path: string): string {

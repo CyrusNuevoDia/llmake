@@ -22,8 +22,8 @@ export interface SyncArgs {
   configPath?: string;
 }
 
-const LOCK_REL = ".lens/lock.json";
-const CONFLICTS_REL = ".lens/conflicts.md";
+const LOCK_REL = ".lenses/lock.json";
+const CONFLICTS_REL = ".lenses/conflicts.md";
 
 function formatErrorMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -44,7 +44,7 @@ function isCleanIgnoringLockfile(cwd: string): Promise<boolean> {
     const stdoutChunks: Buffer[] = [];
     const proc = spawn(
       "git",
-      ["status", "--porcelain", "--", ".", ":(exclude).lens/lock.json"],
+      ["status", "--porcelain", "--", ".", ":(exclude).lenses/lock.json"],
       {
         cwd,
         stdio: ["ignore", "pipe", "ignore"],
@@ -110,7 +110,7 @@ function filterSnapshotsForLenses(
  * runner with the sync prompt, and record the resulting file hashes.
  *
  * Unresolved conflicts travel as a side-channel file: the sync prompt
- * instructs the runner to write `.lens/conflicts.md` when it can't
+ * instructs the runner to write `.lenses/conflicts.md` when it can't
  * resolve contradictory edits. After the runner exits, `lens sync`
  * surfaces that file if present — no stdout parsing required, so the
  * mechanism is runner-agnostic.
@@ -121,7 +121,7 @@ export async function runSync(args: SyncArgs): Promise<ExitCode> {
     : await discoverConfig();
 
   if (!configPath) {
-    console.error("lens: no config file found (.lenses/config.yaml)");
+    console.error("lens: no config file found (lens.yml)");
     return Exit.CONFIG;
   }
 
@@ -133,8 +133,7 @@ export async function runSync(args: SyncArgs): Promise<ExitCode> {
     return Exit.CONFIG;
   }
 
-  const configDir = dirname(configPath);
-  const repoRoot = resolve(configDir, "..");
+  const repoRoot = dirname(configPath);
 
   for (const lens of config.lenses) {
     const lensPath = resolve(repoRoot, lens.path);
@@ -150,7 +149,7 @@ export async function runSync(args: SyncArgs): Promise<ExitCode> {
   const lock = await readLock(lockPath);
   const ctx = await assembleSyncContext(
     config,
-    configDir,
+    repoRoot,
     syncBaselineLock(lock)
   );
 
@@ -212,7 +211,7 @@ export async function runSync(args: SyncArgs): Promise<ExitCode> {
     );
   }
 
-  const updatedCtx = await assembleSyncContext(config, configDir, lock);
+  const updatedCtx = await assembleSyncContext(config, repoRoot, lock);
   await writeLock(lockPath, {
     ...lock,
     tasks: {

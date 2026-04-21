@@ -48,10 +48,10 @@ Two git refs track state:
   Advanced by `pull` on a clean tree; manually by `lens mark applied`
   (typically after a coding agent run kicked off by `lens apply`).
 
-Config lives at `.lenses/config.yaml` (or `.jsonc`/`.json`; discovered in
-that order). The lockfile lives at `.lens/lock.json` and records hashes
-of lens files and pull-source files across the `generate`, `sync`, and
-`pull` tasks. Commit both.
+Config lives at `lens.yml` at the repo root (or `lens.yaml`, `lens.jsonc`,
+or `lens.json`; discovered in that order). The lockfile lives at
+`.lenses/lock.json` and records hashes of lens files and pull-source
+files across the `generate`, `sync`, and `pull` tasks. Commit both.
 
 The runner is any shell command containing the literal `{prompt}` token;
 `lens` shell-escapes the prompt and invokes via a login shell so your
@@ -64,19 +64,19 @@ files.
 ## COMMANDS
 
 **init** [_description_]
-&nbsp;&nbsp;&nbsp;&nbsp;Scaffold `.lenses/config.yaml` from a template,
-generate initial lens content via the runner, write `.lens/lock.json`,
-advance `refs/lens/synced`.
+&nbsp;&nbsp;&nbsp;&nbsp;Scaffold `lens.yml` from a template, generate
+initial lens content via the runner, write `.lenses/lock.json`, advance
+`refs/lens/synced`.
 
 **sync**
 &nbsp;&nbsp;&nbsp;&nbsp;Reconcile lens files with each other. Runs the
 sync prompt over changed lenses and their transitive `affects` closure.
-Surfaces `.lens/conflicts.md` if the runner leaves one behind.
+Surfaces `.lenses/conflicts.md` if the runner leaves one behind.
 
 **pull**
 &nbsp;&nbsp;&nbsp;&nbsp;Reflect code changes back into lenses using
 `pullSources` globs (or all git-tracked files outside `.lenses/`,
-`.lens/`, `node_modules/`, `.git/` as a fallback).
+`lens.yml` (and variants), `node_modules/`, `.git/` as a fallback).
 
 **apply**
 &nbsp;&nbsp;&nbsp;&nbsp;Assemble a read-only context bundle (intent,
@@ -113,8 +113,8 @@ etc.).
 
 **-c, --config** _path_
 &nbsp;&nbsp;&nbsp;&nbsp;Use a specific config file. When unset,
-discovery searches `.lenses/config.yaml`, then `.jsonc`, then `.json`.
-Accepted by every verb.
+discovery searches `lens.yml`, then `lens.yaml`, then `lens.jsonc`, then
+`lens.json`. Accepted by every verb.
 
 **-n, --dry-run**
 &nbsp;&nbsp;&nbsp;&nbsp;Print what would happen (assembled prompt,
@@ -208,13 +208,13 @@ lens --config my/path/config.yaml status
 
 ## FILES
 
-- `.lenses/config.yaml` — config: intent, runner, settings, lenses
-  (discovered, or `.jsonc`/`.json` fallbacks).
+- `lens.yml` — config: intent, runner, settings, lenses (discovered, or
+  `lens.yaml`/`lens.jsonc`/`lens.json` fallbacks).
 - `.lenses/<name>.md` — the lens files themselves, one per entry in
-  `config.yaml` `lenses:`.
-- `.lens/lock.json` — lockfile: per-task hashes for `generate`, `sync`,
+  `lens.yml`'s `lenses:`.
+- `.lenses/lock.json` — lockfile: per-task hashes for `generate`, `sync`,
   `pull`. Commit it.
-- `.lens/conflicts.md` — transient side-channel file the runner writes
+- `.lenses/conflicts.md` — transient side-channel file the runner writes
   when `sync` cannot resolve contradictory edits. Removed by `lens` at
   the start of each `sync`; surfaced to stdout when present after the
   run; delete manually when resolved.

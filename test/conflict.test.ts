@@ -52,7 +52,7 @@ ${body}
 async function writeConflictProject(dir: string): Promise<void> {
   await mkdir(join(dir, ".lenses"), { recursive: true });
   await writeFile(
-    join(dir, ".lenses/config.yaml"),
+    join(dir, "lens.yml"),
     `intent: conflict test
 runner: echo {prompt}
 lenses:
@@ -73,15 +73,14 @@ lenses:
 }
 
 describe("lens sync conflict surfacing", () => {
-  it("surfaces .lens/conflicts.md when the runner writes one", async () => {
+  it("surfaces .lenses/conflicts.md when the runner writes one", async () => {
     await writeConflictProject(tempDir);
-    await mkdir(join(tempDir, ".lens"), { recursive: true });
 
     const runnerPath = join(tempDir, "conflict-runner.sh");
     await writeRunnerScript(
       runnerPath,
-      `mkdir -p .lens
-cat > .lens/conflicts.md <<'EOF'
+      `mkdir -p .lenses
+cat > .lenses/conflicts.md <<'EOF'
 # Sync conflicts
 
 ## schema
@@ -102,7 +101,7 @@ EOF`
     expect(stderr).toBe("");
     expect(stdout).toContain("lens: sync — runner completed");
     expect(stdout).toContain(
-      "lens: sync recorded unresolved conflicts in .lens/conflicts.md:"
+      "lens: sync recorded unresolved conflicts in .lenses/conflicts.md:"
     );
     expect(stdout).toContain("# Sync conflicts");
     expect(stdout).toContain("## schema");
@@ -126,10 +125,9 @@ EOF`
     expect(stdout).not.toContain("unresolved conflicts");
   });
 
-  it("clears a stale .lens/conflicts.md when the current run has none", async () => {
+  it("clears a stale .lenses/conflicts.md when the current run has none", async () => {
     await writeConflictProject(tempDir);
-    await mkdir(join(tempDir, ".lens"), { recursive: true });
-    await writeFile(join(tempDir, ".lens/conflicts.md"), "# Stale\n");
+    await writeFile(join(tempDir, ".lenses/conflicts.md"), "# Stale\n");
 
     const runnerPath = join(tempDir, "clean-runner.sh");
     await writeRunnerScript(runnerPath, "true");
@@ -140,7 +138,7 @@ EOF`
     });
 
     expect(exitCode).toBe(0);
-    const leftover = Bun.file(join(tempDir, ".lens/conflicts.md"));
+    const leftover = Bun.file(join(tempDir, ".lenses/conflicts.md"));
     expect(await leftover.exists()).toBe(false);
   });
 });

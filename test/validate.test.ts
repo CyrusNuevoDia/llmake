@@ -40,7 +40,7 @@ async function runLens(
 
 async function writeProjectConfig(dir: string, body: string): Promise<void> {
   await mkdir(join(dir, ".lenses"), { recursive: true });
-  await writeFile(join(dir, ".lenses/config.yaml"), body);
+  await writeFile(join(dir, "lens.yml"), body);
 }
 
 async function writeLensFile(

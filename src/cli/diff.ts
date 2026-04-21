@@ -9,7 +9,7 @@ export interface DiffArgs {
 }
 
 const APPLIED_REF = "refs/lens/applied";
-const NO_CONFIG_MESSAGE = "lens: no config file found (.lenses/config.yaml)";
+const NO_CONFIG_MESSAGE = "lens: no config file found (lens.yml)";
 const NO_BASELINE_NOTE = "(no baseline yet — treat current as baseline)";
 const NOT_GIT_CODE_NOTE = "(not a git repo — code drift tracking disabled)";
 
@@ -19,7 +19,7 @@ function formatErrorMessage(error: unknown): string {
 }
 
 function getWorkspaceRoot(configPath: string): string {
-  return resolve(dirname(configPath), "..");
+  return dirname(configPath);
 }
 
 function formatSummary(input: {
@@ -54,8 +54,9 @@ export async function runDiff(args: DiffArgs): Promise<ExitCode> {
     return Exit.CONFIG;
   }
 
+  let config: Awaited<ReturnType<typeof loadConfig>>;
   try {
-    await loadConfig(configPath);
+    config = await loadConfig(configPath);
   } catch (error) {
     console.error(formatErrorMessage(error));
     return Exit.CONFIG;
@@ -71,7 +72,11 @@ export async function runDiff(args: DiffArgs): Promise<ExitCode> {
       hasBaseline = await refExists(APPLIED_REF, workspaceRoot);
       if (hasBaseline) {
         lensDriftCount = (
-          await changedSince(APPLIED_REF, [".lenses/"], workspaceRoot)
+          await changedSince(
+            APPLIED_REF,
+            config.lenses.map((lens) => lens.path),
+            workspaceRoot
+          )
         ).length;
       }
     }
