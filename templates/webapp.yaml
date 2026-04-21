@@ -17,24 +17,42 @@ lenses:
       Normalized relational schema as markdown. For each table: a markdown
       table with columns (name, type, nullable, PK/FK, constraints). End
       with a "Relationships" section listing cardinalities.
+    pullSources:
+      - prisma/**/*.prisma
+      - db/**/*.sql
+      - src/db/**/*.ts
+      - src/models/**/*.ts
 
   - name: api
     path: .lenses/api.md
     description: |
       Every REST endpoint as a markdown table: Method, Path, Description,
       Auth (role required), Request body, Response body.
+    pullSources:
+      - src/routes/**/*.ts
+      - src/api/**/*.ts
+      - src/controllers/**/*.ts
+      - src/app/api/**/*.ts
 
   - name: roles
     path: .lenses/roles.md
     description: |
       Every role in the system. For each, a bulleted list of what they can
       and cannot do. Group by resource.
+    pullSources:
+      - src/auth/**/*.ts
+      - src/permissions/**/*.ts
+      - src/middleware/**/*.ts
 
   - name: jobs
     path: .lenses/jobs.md
     description: |
       Background / scheduled / event-driven jobs. For each: trigger,
       inputs, side effects, idempotency, and expected cadence or SLA.
+    pullSources:
+      - src/jobs/**/*.ts
+      - src/workers/**/*.ts
+      - src/tasks/**/*.ts
 
   - name: flows
     path: .lenses/flows.md
@@ -49,3 +67,7 @@ lenses:
       Low-fidelity screen sketches as fenced ASCII or markdown. One section
       per primary screen. Label the role(s) that see each screen and which
       flow step(s) it belongs to.
+    pullSources:
+      - src/components/**/*.{tsx,jsx}
+      - src/pages/**/*.{tsx,jsx}
+      - src/app/**/*.{tsx,jsx}

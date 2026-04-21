@@ -55,6 +55,25 @@ describe("shipped templates", () => {
     }
   });
 
+  it("ships webapp pullSources defaults", async () => {
+    const { loadTemplate } = await import("../src/templates");
+    const { config } = await loadTemplate("webapp");
+
+    const lensesWithPullSources = config.lenses.filter(
+      (lens) => Array.isArray(lens.pullSources) && lens.pullSources.length > 0
+    );
+
+    expect(lensesWithPullSources.length).toBeGreaterThan(0);
+
+    for (const lens of lensesWithPullSources) {
+      expect(Array.isArray(lens.pullSources)).toBe(true);
+      for (const source of lens.pullSources ?? []) {
+        expect(typeof source).toBe("string");
+        expect(source).toBeTruthy();
+      }
+    }
+  });
+
   it("initializes successfully with the blank template", async () => {
     const { exitCode, stderr } = await runLens([
       "init",

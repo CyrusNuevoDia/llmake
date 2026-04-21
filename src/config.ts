@@ -22,6 +22,7 @@ const LensDefSchema = z
     name: z.string().min(1, "lens name must not be empty"),
     path: z.string().min(1, "lens path must not be empty"),
     description: z.string().min(1, "lens description must not be empty"),
+    pullSources: z.array(z.string().min(1)).optional(),
   })
   .passthrough();
 

@@ -30,6 +30,12 @@ export interface LensDef {
   path: string;
   /** What the lens should contain. Used as generation guidance. */
   description: string;
+  /**
+   * Optional globs (relative to repo root) that identify the code files this
+   * lens should track for `lens pull`. If absent, `pull` falls back to tracking
+   * all git-tracked files outside `.lenses/` and `.lens/`.
+   */
+  pullSources?: string[];
 }
 
 /**

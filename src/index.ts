@@ -1,9 +1,11 @@
 #!/usr/bin/env node
 
 import { parseArgs } from "node:util";
+import { runAdd } from "./cli/add";
 import { runApply } from "./cli/apply";
 import { runInit } from "./cli/init";
 import { runMark } from "./cli/mark";
+import { runPull } from "./cli/pull";
 import { runStatus } from "./cli/status";
 import { runSync } from "./cli/sync";
 import { Exit, type ExitCode } from "./exit";
@@ -16,6 +18,8 @@ Usage:
   lens init [description] [--template <name>]
   lens status
   lens sync [--force] [--dry-run]
+  lens pull [--force] [--dry-run]
+  lens add <name> --description <text> [--path <p>] [--dry-run]
   lens apply [--dry-run]
   lens mark-synced
   lens mark-applied
@@ -39,6 +43,8 @@ interface ParsedArgs {
   force: boolean;
   dryRun: boolean;
   template?: string;
+  description?: string;
+  path?: string;
   configPath?: string;
 }
 
@@ -51,6 +57,8 @@ function parseCliArgs(): ParsedArgs {
       force: { type: "boolean", short: "f", default: false },
       "dry-run": { type: "boolean", short: "n", default: false },
       template: { type: "string" },
+      description: { type: "string" },
+      path: { type: "string", short: "p" },
       config: { type: "string", short: "c" },
     },
     allowPositionals: true,
@@ -66,6 +74,8 @@ function parseCliArgs(): ParsedArgs {
     force: values.force ?? false,
     dryRun: values["dry-run"] ?? false,
     template: values.template,
+    description: values.description,
+    path: values.path,
     configPath: values.config,
   };
 }
@@ -99,6 +109,24 @@ function dispatch(args: ParsedArgs): Promise<ExitCode> {
       force: args.force,
       dryRun: args.dryRun,
       configPath: args.configPath,
+    });
+  }
+
+  if (args.verb === "pull") {
+    return runPull({
+      force: args.force,
+      dryRun: args.dryRun,
+      configPath: args.configPath,
+    });
+  }
+
+  if (args.verb === "add") {
+    return runAdd({
+      name: args.positionals[0],
+      description: args.description,
+      path: args.path,
+      configPath: args.configPath,
+      dryRun: args.dryRun,
     });
   }
 
