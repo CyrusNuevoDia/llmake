@@ -76,7 +76,7 @@ Ship with six starter lens sets:
 | 0    | Success                                                |
 | 1    | Operation failed (runner error, missing lens, etc.)    |
 | 2    | Config missing or invalid                              |
-| 3    | Git state incompatible (e.g. `mark-*` outside a repo)  |
+| 3    | Git state incompatible (e.g. `lens mark ...` outside a repo) |
 
 ## Config (`.lenses/config.yaml`)
 
@@ -160,7 +160,7 @@ bun run build                   # produces dist/lens.js
 All five spec phases are implemented:
 
 - **Phase 1** — fork + `lens init` (webapp/blank templates).
-- **Phase 2** — `sync`, `status`, `mark-*`, git-ref layer, all 6 templates.
+- **Phase 2** — `sync`, `status`, `mark <synced|applied>`, git-ref layer, all 6 templates.
 - **Phase 3** — `apply` + Claude Code plugin with plan-mode handoff.
 - **Phase 4** — `pull` + `add` + `pullSources` schema.
 - **Phase 5** — `diff`, `validate`, structured conflict surfacing in sync, optional `affects:` graph.
