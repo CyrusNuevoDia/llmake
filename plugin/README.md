@@ -14,5 +14,5 @@ Commands:
 - `/lens:apply` — open plan mode from `lens apply --dry-run` context.
 - `/lens:mark synced` — advance `refs/lens/synced` to `HEAD`.
 - `/lens:mark applied` — advance `refs/lens/applied` to `HEAD`.
-- `/lens:pull` — placeholder for the future `lens pull` command.
-- `/lens:add` — placeholder for the future `lens add` command.
+- `/lens:pull` — reflect code changes back into the lenses (invokes the runner; can take a minute).
+- `/lens:add <name> --description "..."` — append a lens to the config and generate its initial content.
